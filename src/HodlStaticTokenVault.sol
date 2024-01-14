@@ -3,14 +3,19 @@ pragma solidity ^0.8.10;
 
 contract HodlStaticTokenVault {
 
-    address STRATEGY_ASSET = ETH;
-    address UNDERLYING_ASSET = GHO_TOKEN;
-    uint256 LAST_PURCHASE;
-    uint256 lastAveragePrice;
-    bool claimEnabled = false;
-    bool setModeEnabled = false;
-    bool strategyExited = false;
-    StrategyOption strategyOption;
+    address public STRATEGY_ASSET;
+    address public UNDERLYING_ASSET;
+    uint256 public FIRST_PURCHASE_TIMESTAMP;
+    uint256 public FINAL_PURCHASE_TIMESTAMP;
+    uint256 public lastAveragePrice;
+    uint256 liquidityToInvest;
+    uint256 saveOnlyTotal;
+    uint256 underlyingAssetOnProfitTotal;
+    bool public isClaimEnabled = false;
+    bool public isSetModeEnabled = false;
+    bool public isStrategyExited = false;
+    bool public isStrategyStopped = false;
+    StrategyOption public strategyOption;
 
     // Custom error for non-student callers
     error NotAStudent();
@@ -18,17 +23,16 @@ contract HodlStaticTokenVault {
     // Mapping to associate each strategy option with its parameters
     mapping(StrategyOption => StrategyParams) public strategyParams;
 
-    uint256[] prices;
-    mapping(uint2556 price => amountOfStrategyAsset) public purchasePrices;
+    uint256[] public prices;
+    // Mapping to associate each purchase price with the amount of strategy asset purchased
+    mapping(uint256 => amountOfStrategyAsset) public purchasePrices;
 
     // TODO when student supplies liquidity check his status to either add the balance 
     // to liquidityToInvest or to saveOnlyTotal  
     address[] students;
-    mapping(address student => StudentMode) public studentsMode;
+    // Mapping to associate each student address with their mode
+    mapping(address => StudentMode) public studentsMode;  
 
-    uint256 liquidityToInvest;
-    uint256 saveOnlyTotal;
-    uint256 underlyingAssetOnProfitTotal;
 
     // Modifier to check if the message sender is a student
     modifier onlyStudents() {
@@ -38,75 +42,79 @@ contract HodlStaticTokenVault {
         _;
     }
 
-    // constructor
+    /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
-        _strategyOption,
-        weeklyAmount,
+        StrategyOption option,
+        uint256 weeklyAmount,
         timestamp lastDeposit,
         uint256 firstPurchaseTimestamp,
+        address strategyAsset,
         address underlyingAsset,
         address schoolAddress,
         address owner
-
     ) {
-        // TODO calculate last purchase
-        LAST_PURCHASE = firstPurchaseTimestamp;
-        strategyOption = _strategyOption;
+        // TODO calculate final purchase timestamp
+        FIRST_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
+        FINAL_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
+        STRATEGY_ASSET = strategyAsset;
+        UNDERLYING_ASSET = underlyingAsset;
+        strategyOption = option;
     }
 
     // only owner functions
+    /// @dev Adds the provided new students to the list of students.
     function addStudents(address[] calldata newStudents) public onlyOwner {
         for (uint i = 0; i < newStudents.length; i++) {
             students.push(newStudents[i]);
         }
     }
 
+    /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
     function restartStrategy(StrategyOption newStrategy) public onlyOwner {
+        require(isStrategyStopped);
         _updateLiquidityToInvest();
-        (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
         _clearPurchasePrices();
+        (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
         purchasePrices[price] += amount;
         lastAveragePrice = _getAveragePrice();
-        _setStrategyParams();
-        strategyExited = false; 
+        strategyOption = newStrategy;
+        isStrategyExited = false; 
     }
     
+    /// @dev Sells remaining ETH holdings and enables claims
     function emergencyExit() public onlyOwner {
-        _sellStrategyAsset(this.balance, 100);
+        _sellStrategyAsset(address(this).balance, 100);
         _enableClaim();
-        strategyExited = true;
+        isStrategyExited = true;
     }
 
-    // automated actions
     function purchaseWeekly() private {
-        // TODO implement automation every week after firstPurchase until LAST_PURCHASE
-        require(!strategyExited);
+        require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
         purchasePrices[price] += amount;
         lastAveragePrice = _getAveragePrice();
     }
 
     function takeProfit() private {
-        // TODO implement automation with a daily basis
-        require(!strategyExited);
-        if (strategyAssetPrice >= averagePrice.plus(strategyParams[strategyOption].targetPrice3.priceIncreasePercentage)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(this.balance, (strategyParams[strategyOption].targetPrice3.sellPercentage));
-        } else if (strategyAssetPrice >= averagePrice.plus(strategyParams[strategyOption].targetPrice2.priceIncreasePercentage)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(this.balance, (strategyParams[strategyOption].targetPrice2.sellPercentage));
-        } else if (strategyAssetPrice >= averagePrice.plus(strategyParams[strategyOption].targetPrice1.priceIncreasePercentage)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(this.balance, (strategyParams[strategyOption].targetPrice1.sellPercentage));
+        require(!isStrategyExited, "Strategy exited");
+        if (strategyAssetPrice >= lastAveragePrice + strategyParams[strategyOption].targetPrice3.priceIncreasePercentage) {
+            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice3.sellPercentage);
+        } else if (strategyAssetPrice >= lastAveragePrice + strategyParams[strategyOption].targetPrice2.priceIncreasePercentage) {
+            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice2.sellPercentage);
+        } else if (strategyAssetPrice >= lastAveragePrice + strategyParams[strategyOption].targetPrice1.priceIncreasePercentage) {
+            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice1.sellPercentage);
         }
     }
 
     function stopLoss() private {
-        // TODO implement automation at the lastAveragePrice 
-        // lastAveragePrice gets updated every time purchaseWeekly() is triggered
-        require(!strategyExited);
-        _sellStrategyAsset(this.balance, uint256(100));
-        setModeEnabled = true;
+        require(!isStrategyExited);
+        _sellStrategyAsset(address(this).balance, uint256(100));
+        isSetModeEnabled = true;
+        isStrategyStopped = true;
     }
 
     // Students functions
+    /// @dev Sets the mode for the calling student.
     function setStudentMode(StudentMode newMode) public onlyStudent {
         studentsMode[msg.sender] = newMode;
         if (newMode == SAVE_ONLY) {
@@ -132,11 +140,11 @@ contract HodlStaticTokenVault {
 
     // Helper functions
     function _enableClaim() private {
-        claimEnabled = true;
+        isClaimEnabled = true;
     }
 
     function _disableClaim() private {
-        claimEnabled = false;
+        isClaimEnabled = false;
     }
 
     // Function to check if an address is a student
@@ -153,7 +161,6 @@ contract HodlStaticTokenVault {
     function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell);
     function _getAveragePrice() public pure {}
     
-    // Set the strategyParams for each strategy option
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
             targetPrice1: TargetPriceParams({sellPercentage: 5, priceIncreasePercentage: 10}), 
@@ -172,4 +179,3 @@ contract HodlStaticTokenVault {
             priceDecreasePercentage: 20});
     }
 }
-
