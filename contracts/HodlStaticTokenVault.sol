@@ -12,11 +12,14 @@ import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 contract HodlStaticTokenVault is AutomationCompatibleInterface {
     AggregatorV3Interface internal dataFeed;
 
-    address public STRATEGY_ASSET;
-    address public UNDERLYING_ASSET;
-    uint256 public FIRST_PURCHASE_TIMESTAMP;
-    uint256 public FINAL_PURCHASE_TIMESTAMP;
+    address public immutable strategyAsset;
+    address public immutable underlyingAsset;
+    address payable public classAddress;
+    uint256 public immutable firstPurchaseTimestamp;
+    uint256 public immutable finalPurchaseTimestamp;
+    uint256 public immutable destructionTimestamp;
     uint256 public lastAveragePrice;
+    uint256 public weeklyAmount;
     uint256 liquidityToInvest;
     uint256 saveOnlyTotal;
     uint256 underlyingAssetOnProfitTotal;
@@ -25,6 +28,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
     StrategyOption public strategyOption;
+
 
 
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
@@ -58,30 +62,31 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
-        StrategyOption option,
-        uint256 weeklyAmount,
-        uint256 lastDepositTimestamp,
-        uint256 firstPurchaseTimestamp,
-        address strategyAsset,
-        address underlyingAsset,
-        address classAddress,
-        address owner, // teacher address
-        uint256 updateInterval,
-        address[] calldata newStudents
+        StrategyOption _strategyOption,
+        uint256 _weeklyAmount,
+        uint256 _initialDepositTimestamp,
+        uint256 _finalDepositTimestamp,
+        address _strategyAsset,
+        address _underlyingAsset,
+        address _classAddress,
+        address _owner, // teacher address
+        uint256 _updateInterval,
+        address[] calldata _newStudents
     ) {
-        // TODO calculate final purchase timestamp
-        FIRST_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
-        FINAL_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
-        STRATEGY_ASSET = strategyAsset;
-        UNDERLYING_ASSET = underlyingAsset;
-        _addStudents(newStudents);
-        strategyOption = option;
+        firstPurchaseTimestamp = _initialDepositTimestamp + (1 days);
+        finalPurchaseTimestamp = _finalDepositTimestamp + (1 days);
+        strategyAsset = _strategyAsset;
+        underlyingAsset = _underlyingAsset;
+        _addStudents(_newStudents);
+        strategyOption = _strategyOption;
+        classAddress = _classAddress;
+        weeklyAmount = _weeklyAmount;
         // to access Eth price from chainlink
         dataFeed = AggregatorV3Interface(
             0x694AA1769357215DE4FAC081bf1f309aDC325306
         );
         // set everything for automation
-        intervalAutomation = updateInterval;
+        intervalAutomation = _updateInterval;
         lastTimeStampAutomation = block.timestamp;
     }
 
@@ -99,11 +104,17 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         isStrategyExited = false; 
     }
     
-    /// @dev Sells remaining ETH holdings and enables claims
+    /// @dev Sells remaining holdings and enables claims
     function emergencyExit() public onlyOwner {
         _sellStrategyAsset(address(this).balance, 100);
         _enableClaim();
         isStrategyExited = true;
+    }
+
+    /// @dev Destroys the vault and send any remaining balance to class address 
+    function destroyContract() public onlyOwner {
+        require(block.timestamp >= destructionTimestamp, "Too early to destroy");
+        selfdestruct(classAddress);
     }
 
     // Automated actions
@@ -144,12 +155,12 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     function _sellStrategyAsset(uint256 total, uint256 percentageToSell) private returns (uint256 receivedAmount) {
         uint256 amountToSwitch = _calculateAbsoluteAmountfromPercentage(total, percentageToSell);
-        ( , receivedAmount) = _switchAssets(STRATEGY_ASSET, UNDERLYING_ASSET, amountToSwitch);
+        ( , receivedAmount) = _switchAssets(strategyAsset, underlyingAsset, amountToSwitch);
         return receivedAmount;
     }
 
     function _buyStrategyAsset(uint256 liquidityToInvest) private returns (uint256 price, uint256 receivedAmount) {
-        return _switchAssets(UNDERLYING_ASSET, STRATEGY_ASSET, liquidityToInvest);
+        return _switchAssets(underlyingAsset, strategyAsset, liquidityToInvest);
     }
 
     function _switchAssets(address assetOut, address assetIn, uint amountofAssetOut) private returns (uint price, uint256 receivedAmount) {
@@ -183,22 +194,35 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         return false;
     }
 
-    // TODO Implement these functions
-    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell) public {}
-    function _getAveragePrice() public pure {}
-    
-    //
-    function _getAveragePrice() public view returns (int) {
-        // how shall it be calculated? always a week window?
-        (
-            /* uint80 roundID */,
-            int answer,
-            /*uint startedAt*/,
-            /*uint timeStamp*/,
-            /*uint80 answeredInRound*/
-        ) = dataFeed.latestRoundData();
-        return answer;
+    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell) private pure returns (uint256) {
+        return (total * percentageToSell) / 100; // Rounds down to the nearest integer
     }
+    
+    function _getAveragePrice() internal view returns (uint256) {
+        uint256 totalValue = 0;
+        uint256 totalAmount = 0;
+
+        for (uint256 i = 0; i < prices.length; i++) {
+            totalValue += prices[i] * uint256(purchasePrices[prices[i]]);
+            totalAmount += uint256(purchasePrices[prices[i]]);
+        }
+        if (totalAmount == 0) {
+            return 0;
+        }
+        return totalValue / totalAmount;  // Rounds down to the nearest integer
+    }
+    
+    // function _getAverage() public view returns (int) {
+    //     // how shall it be calculated? always a week window?
+    //     (
+    //         /* uint80 roundID */,
+    //         int answer,
+    //         /*uint startedAt*/,
+    //         /*uint timeStamp*/,
+    //         /*uint80 answeredInRound*/
+    //     ) = dataFeed.latestRoundData();
+    //     return answer;
+    // }
     
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
@@ -241,3 +265,5 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         // We don't use the performData in this example. The performData is generated by the Automation Node's call to your checkUpkeep function
     }
 }
+
+
