@@ -33,10 +33,6 @@ contract SavvyStakingVault is ERC4626, Ownable {
 
     }
 
-    //function addVault() {}
-    //function stake () external {}
-    //function startegie (){}
-    //function unstake () external {}
     function addStudents(address[] memory students) public {
          studentsLists = students;
     }
