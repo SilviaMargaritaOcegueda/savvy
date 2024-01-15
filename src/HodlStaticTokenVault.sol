@@ -46,12 +46,13 @@ contract HodlStaticTokenVault {
     constructor(
         StrategyOption option,
         uint256 weeklyAmount,
-        timestamp lastDeposit,
+        uint256 lastDepositTimestamp,
         uint256 firstPurchaseTimestamp,
         address strategyAsset,
         address underlyingAsset,
         address schoolAddress,
-        address owner
+        address owner,
+        address[] calldata newStudents
     ) {
         // TODO calculate final purchase timestamp
         FIRST_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
@@ -59,15 +60,10 @@ contract HodlStaticTokenVault {
         STRATEGY_ASSET = strategyAsset;
         UNDERLYING_ASSET = underlyingAsset;
         strategyOption = option;
+        _addStudents(newStudents);
     }
 
     // only owner functions
-    /// @dev Adds the provided new students to the list of students.
-    function addStudents(address[] calldata newStudents) public onlyOwner {
-        for (uint i = 0; i < newStudents.length; i++) {
-            students.push(newStudents[i]);
-        }
-    }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
     function restartStrategy(StrategyOption newStrategy) public onlyOwner {
@@ -88,6 +84,7 @@ contract HodlStaticTokenVault {
         isStrategyExited = true;
     }
 
+    // Automated actions
     function purchaseWeekly() private {
         require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
@@ -145,6 +142,13 @@ contract HodlStaticTokenVault {
 
     function _disableClaim() private {
         isClaimEnabled = false;
+    }
+
+    // Adds the provided students to the list of students.
+    function _addStudents(address[] calldata newStudents) private {
+        for (uint i = 0; i < newStudents.length; i++) {
+            students.push(newStudents[i]);
+        }
     }
 
     // Function to check if an address is a student
