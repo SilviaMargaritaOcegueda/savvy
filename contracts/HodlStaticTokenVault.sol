@@ -60,19 +60,21 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     constructor(
         StrategyOption option,
         uint256 weeklyAmount,
-        timestamp lastDeposit,
+        uint256 lastDepositTimestamp,
         uint256 firstPurchaseTimestamp,
         address strategyAsset,
         address underlyingAsset,
-        address schoolAddress,
-        address owner,
-        uint256 updateInterval
+        address classAddress,
+        address owner, // teacher address
+        uint256 updateInterval,
+        address[] calldata newStudents
     ) {
         // TODO calculate final purchase timestamp
         FIRST_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
         FINAL_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
         STRATEGY_ASSET = strategyAsset;
         UNDERLYING_ASSET = underlyingAsset;
+        _addStudents(newStudents);
         strategyOption = option;
         // to access Eth price from chainlink
         dataFeed = AggregatorV3Interface(
@@ -84,13 +86,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     }
 
     // only owner functions
-    /// @dev Adds the provided new students to the list of students.
-    function addStudents(address[] calldata newStudents) public onlyOwner {
-        students = newStudents;
-        // for (uint i = 0; i < newStudents.length; i++) {
-        //     students.push(newStudents[i]);
-        // }
-    }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
     function restartStrategy(StrategyOption newStrategy) public onlyOwner {
@@ -111,6 +106,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         isStrategyExited = true;
     }
 
+    // Automated actions
     function purchaseWeekly() private {
         require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
@@ -170,6 +166,13 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         isClaimEnabled = false;
     }
 
+    // Adds the provided students to the list of students.
+    function _addStudents(address[] calldata newStudents) private {
+        for (uint i = 0; i < newStudents.length; i++) {
+            students.push(newStudents[i]);
+        }
+    }
+
     // Function to check if an address is a student
     function _isStudent(address _address) private view returns(bool) {
         for (uint i = 0; i < students.length; i++) {
@@ -182,6 +185,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     // TODO Implement these functions
     function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell) public {}
+    function _getAveragePrice() public pure {}
     
     //
     function _getAveragePrice() public view returns (int) {
