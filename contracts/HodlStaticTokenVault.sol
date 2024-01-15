@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
-contract HodlStaticTokenVault {
+import "./DataTypes.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+// Sepolia 
+// ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
+// GHO / USD 0x635A86F9fdD16Ff09A0701C305D3a845F1758b8E
+// chainlink automation 
+import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+
+contract HodlStaticTokenVault is AutomationCompatibleInterface {
+    AggregatorV3Interface internal dataFeed;
 
     address public STRATEGY_ASSET;
     address public UNDERLYING_ASSET;
@@ -16,6 +25,11 @@ contract HodlStaticTokenVault {
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
     StrategyOption public strategyOption;
+
+
+    // Use an interval in seconds and a timestamp to slow execution of Upkeep
+    uint256 public immutable intervalAutomation;
+    uint256 public lastTimeStampAutomation;
 
     // Custom error for non-student callers
     error NotAStudent();
@@ -46,13 +60,13 @@ contract HodlStaticTokenVault {
     constructor(
         StrategyOption option,
         uint256 weeklyAmount,
-        uint256 lastDepositTimestamp,
+        timestamp lastDeposit,
         uint256 firstPurchaseTimestamp,
         address strategyAsset,
         address underlyingAsset,
         address schoolAddress,
         address owner,
-        address[] calldata newStudents
+        uint256 updateInterval
     ) {
         // TODO calculate final purchase timestamp
         FIRST_PURCHASE_TIMESTAMP = firstPurchaseTimestamp;
@@ -60,10 +74,23 @@ contract HodlStaticTokenVault {
         STRATEGY_ASSET = strategyAsset;
         UNDERLYING_ASSET = underlyingAsset;
         strategyOption = option;
-        _addStudents(newStudents);
+        // to access Eth price from chainlink
+        dataFeed = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
+        // set everything for automation
+        intervalAutomation = updateInterval;
+        lastTimeStampAutomation = block.timestamp;
     }
 
     // only owner functions
+    /// @dev Adds the provided new students to the list of students.
+    function addStudents(address[] calldata newStudents) public onlyOwner {
+        students = newStudents;
+        // for (uint i = 0; i < newStudents.length; i++) {
+        //     students.push(newStudents[i]);
+        // }
+    }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
     function restartStrategy(StrategyOption newStrategy) public onlyOwner {
@@ -84,7 +111,6 @@ contract HodlStaticTokenVault {
         isStrategyExited = true;
     }
 
-    // Automated actions
     function purchaseWeekly() private {
         require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
@@ -133,7 +159,7 @@ contract HodlStaticTokenVault {
     function _switchAssets(address assetOut, address assetIn, uint amountofAssetOut) private returns (uint price, uint256 receivedAmount) {
         // TODO declare and implement function
         return aave.switchTokens();
-    };
+    }
 
     // Helper functions
     function _enableClaim() private {
@@ -142,13 +168,6 @@ contract HodlStaticTokenVault {
 
     function _disableClaim() private {
         isClaimEnabled = false;
-    }
-
-    // Adds the provided students to the list of students.
-    function _addStudents(address[] calldata newStudents) private {
-        for (uint i = 0; i < newStudents.length; i++) {
-            students.push(newStudents[i]);
-        }
     }
 
     // Function to check if an address is a student
@@ -162,8 +181,20 @@ contract HodlStaticTokenVault {
     }
 
     // TODO Implement these functions
-    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell);
-    function _getAveragePrice() public pure {}
+    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell) public {}
+    
+    //
+    function _getAveragePrice() public view returns (int) {
+        // how shall it be calculated? always a week window?
+        (
+            /* uint80 roundID */,
+            int answer,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = dataFeed.latestRoundData();
+        return answer;
+    }
     
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
@@ -181,5 +212,28 @@ contract HodlStaticTokenVault {
             targetPrice2: TargetPriceParams({sellPercentage: 20, priceIncreasePercentage: 30}), 
             targetPrice3: TargetPriceParams({sellPercentage: 25, priceIncreasePercentage: 40}), 
             priceDecreasePercentage: 20});
+    }
+
+    // Chainlink function for setting automation based on a timeinterval
+    function checkUpkeep(
+        bytes calldata /* checkData */
+    )
+        external
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory /* performData */)
+    {
+        upkeepNeeded = (block.timestamp - lastTimeStamp) > interval;
+        // We don't use the checkData in this example. The checkData is defined when the Upkeep was registered.
+    }
+
+    // Chainlink function to perform automation action
+    // we have to call what shall be performed during autamation inside this function
+    function performUpkeep(bytes calldata /* performData */) external override {
+        if ((block.timestamp - lastTimeStamp) > interval) {
+            lastTimeStamp = block.timestamp;
+            counter = counter + 1;
+        }
+        // We don't use the performData in this example. The performData is generated by the Automation Node's call to your checkUpkeep function
     }
 }
