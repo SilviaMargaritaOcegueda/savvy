@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
+import "./DataTypes.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+// Sepolia 
+// ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
+// GHO / USD 0x635A86F9fdD16Ff09A0701C305D3a845F1758b8E
+
+
 contract HodlStaticTokenVault {
+    AggregatorV3Interface internal dataFeed;
 
     address public STRATEGY_ASSET;
     address public UNDERLYING_ASSET;
@@ -59,14 +67,19 @@ contract HodlStaticTokenVault {
         STRATEGY_ASSET = strategyAsset;
         UNDERLYING_ASSET = underlyingAsset;
         strategyOption = option;
+        // to access Eth price
+        dataFeed = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
     }
 
     // only owner functions
     /// @dev Adds the provided new students to the list of students.
     function addStudents(address[] calldata newStudents) public onlyOwner {
-        for (uint i = 0; i < newStudents.length; i++) {
-            students.push(newStudents[i]);
-        }
+        students = newStudents;
+        // for (uint i = 0; i < newStudents.length; i++) {
+        //     students.push(newStudents[i]);
+        // }
     }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
@@ -136,7 +149,7 @@ contract HodlStaticTokenVault {
     function _switchAssets(address assetOut, address assetIn, uint amountofAssetOut) private returns (uint price, uint256 receivedAmount) {
         // TODO declare and implement function
         return aave.switchTokens();
-    };
+    }
 
     // Helper functions
     function _enableClaim() private {
@@ -158,8 +171,20 @@ contract HodlStaticTokenVault {
     }
 
     // TODO Implement these functions
-    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell);
-    function _getAveragePrice() public pure {}
+    function _calculateAbsoluteAmountfromPercentage(uint256 total, uint256 percentageToSell) public {}
+    
+    //
+    function _getAveragePrice() public view returns (int) {
+        // how shall it be calculated? always a week window?
+        (
+            /* uint80 roundID */,
+            int answer,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = dataFeed.latestRoundData();
+        return answer;
+    }
     
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
