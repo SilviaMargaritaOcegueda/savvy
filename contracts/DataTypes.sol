@@ -14,8 +14,8 @@ library DataTypes {
     }
 
     struct TargetPriceParams {
-        uint256 sellPercentage;
-        uint256 priceIncreasePercentage;
+        uint256 sellBasisPoints;
+        uint256 priceIncreaseBasisPoints;
     }
 
     struct StrategyParams {
@@ -23,6 +23,6 @@ library DataTypes {
         TargetPriceParams targetPrice2;
         TargetPriceParams targetPrice3;
         // Stop loss
-        uint256 priceDecreasePercentage;
+        uint256 priceDecreaseBasisPoints;
     }
 }
