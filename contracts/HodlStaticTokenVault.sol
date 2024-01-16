@@ -49,7 +49,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     uint256[] public prices;
     // Associates each purchase price with the amount of strategy asset purchased at that price
-    mapping(uint256 => uint256 amountOfStrategyAsset) public purchasePrices;
+    mapping(uint256 => uint256) public purchasePrices;
 
     // TODO when student supplies liquidity check his status to either add the balance 
     // to liquidityToInvest or to saveOnlyTotal  
@@ -144,9 +144,9 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     // Students functions
     /// @dev Sets the mode for the calling student.
-    function setStudentMode(StudentMode newMode) public onlyStudent {
+    function setStudentMode(StudentMode newMode) public onlyStudents {
         studentsMode[msg.sender] = newMode;
-        if (newMode == SAVE_ONLY) {
+        if (newMode == StudentMode.SAVE_ONLY) {
             // TODO use the  ERC function to get a user underlying asset balance
             saveOnlyTotal += getStudentUnderlyingAssetBalance();
         }
@@ -209,6 +209,18 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
             return 0;
         }
         return totalValue / totalAmount;  // Rounds down to the nearest integer
+    }
+
+    // TODO implement this function
+    function _updateLiquidityToInvest() private {
+        // From vaults balance of GHO substract the saveOnly amount
+
+    }
+
+    function _clearPurchasePrices() private {
+        for (uint256 i = 0; i < prices.length; i++) {
+            purchasePrices[prices[i]] = false;
+        }
     }
 
     function _setStrategyParams() private {
