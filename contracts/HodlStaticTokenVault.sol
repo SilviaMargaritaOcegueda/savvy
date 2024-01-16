@@ -10,7 +10,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract HodlStaticTokenVault is AutomationCompatibleInterface {
+contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     using DataTypes for DataTypes.StrategyOption;
     using DataTypes for DataTypes.StrategyParams;
     using DataTypes for DataTypes.StudentMode;
@@ -81,7 +81,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         address _owner, // teacher address
         uint256 _updateInterval,
         address[] calldata _newStudents
-    ) {
+    ) Ownable(_owner) {
         firstPurchaseTimestamp = _initialDepositTimestamp + (1 days);
         finalPurchaseTimestamp = _finalDepositTimestamp + (1 days);
         strategyAsset = _strategyAsset;
