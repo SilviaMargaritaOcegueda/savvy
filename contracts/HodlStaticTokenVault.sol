@@ -11,17 +11,13 @@ import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
-    using DataTypes for DataTypes.StrategyOption;
-    using DataTypes for DataTypes.StrategyParams;
-    using DataTypes for DataTypes.StudentMode;
-    using DataTypes for DataTypes.TargetPriceParams;
 
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
     address payable public classAddress;
     uint256 public immutable firstPurchaseTimestamp;
     uint256 public immutable finalPurchaseTimestamp;
-    uint256 public immutable destructionTimestamp;
+    uint256 public immutable finalWithdrawalTimestamp;
     uint256 public strategyAssetPrice;
     uint256 public lastAveragePrice;
     uint256 public weeklyAmount;
@@ -41,7 +37,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     AggregatorV3Interface internal dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
     uint256 public immutable intervalAutomation = 604_800;
-    uint256 public lastTimeStampAutomation = finalPurchaseTimestamp + (1 days);
+    uint256 public lastTimeStampAutomation;
 
     error NotAStudent();
     error StudentHasVoted();
@@ -80,15 +76,16 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         address _underlyingAsset,
         address _classAddress,
         address _owner, // teacher address
-        uint256 _updateInterval,
-        address[] calldata _newStudents
+        address[] memory _students
     ) Ownable(_owner) {
-        firstPurchaseTimestamp = _initialDepositTimestamp + (1 days);
-        finalPurchaseTimestamp = _finalDepositTimestamp + (1 days);
+        firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
+        finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
+        lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
+        finalWithdrawalTimestamp = lastTimeStampAutomation + 90 days;
         strategyAsset = _strategyAsset;
         underlyingAsset = _underlyingAsset;
-        _addStudents(_newStudents);
-        classAddress = _classAddress;
+        students = _students;
+        classAddress = payable(_classAddress);
         weeklyAmount = _weeklyAmount;
     }
 
@@ -102,7 +99,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
         lastAveragePrice = _getAveragePrice();
-        DataTypes.strategyOption = newStrategy;
+        strategyOption = newStrategy;
         isStrategyExited = false; 
     }
     
@@ -113,11 +110,14 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         isStrategyExited = true;
     }
 
-    /// @dev Destroys the vault and send any remaining balance to class address 
-    function destroyContract() public onlyOwner {
-        require(block.timestamp >= destructionTimestamp, "Too early to destroy");
-        selfdestruct(classAddress);
+    /// @dev Sends remaining ETH balance to the class address 
+    function withdrawAll() public onlyOwner {
+        require(block.timestamp >= finalWithdrawalTimestamp, "Too early to destroy");
+        uint256 remainingEthBalance = address(this).balance;
+        require(address(this).balance > 0, "Contract balance is empty");
+        classAddress.transfer(remainingEthBalance);
     }
+
 
     // Automated actions
     function purchaseWeekly() private {
@@ -128,19 +128,19 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     }
 
     function takeProfit() private {
-        require(!isStrategyExited, "Strategy exited");
-        require((lastAveragePrice * DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
-        // TODO Here startegyAssetPrice has to be switched with oracle price feed 
-        if (getEthUsdPrice() >= lastAveragePrice + 
-        (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
-        } else if (getEthUsdPrice() >= lastAveragePrice + 
-        (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.sellBasisPoints);
-        } else if (getEthUsdPrice() >= lastAveragePrice + 
-        (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.sellBasisPoints);
-        }
+        // require(!isStrategyExited, "Strategy exited");
+        // require((lastAveragePrice * DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
+        // // TODO Here startegyAssetPrice has to be switched with oracle price feed 
+        // if (getEthUsdPrice() >= lastAveragePrice + 
+        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
+        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
+        // } else if (getEthUsdPrice() >= lastAveragePrice + 
+        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
+        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.sellBasisPoints);
+        // } else if (getEthUsdPrice() >= lastAveragePrice + 
+        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
+        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.sellBasisPoints);
+        // }
     }
 
     function stopLoss() private {
@@ -179,7 +179,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     function _switchAssets(address assetOut, address assetIn, uint amountofAssetOut) private returns (uint price, uint256 receivedAmount) {
         // TODO declare and implement function
         // return aave.switchTokens();
-        return 0;
+        // return 0;
     }
 
     // Helper functions
@@ -235,23 +235,23 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
 
     function _clearPurchasePrices() private {
         for (uint256 i = 0; i < prices.length; i++) {
-            purchasePrices[prices[i]] = false;
+            purchasePrices[prices[i]] = 0;
         }
     }
 
     // In this contract, we represent percentages as basis points (bps) where 1% = 100 bps.
     function _setStrategyParams() private {
-        DataTypes.strategyParams[DataTypes.StrategyOption.CONSERVATIVE] = DataTypes.StrategyParams({
+        strategyParams[DataTypes.StrategyOption.CONSERVATIVE] = DataTypes.StrategyParams({
             targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 500, priceIncreaseBasisPoints: 1000}), 
             targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 1000, priceIncreaseBasisPoints: 2000}), 
             targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 3000}), 
             priceDecreaseBasisPoints: 1000});
-        DataTypes.strategyParams[DataTypes.StrategyOption.MODERATE] = DataTypes.StrategyParams({
+        strategyParams[DataTypes.StrategyOption.MODERATE] = DataTypes.StrategyParams({
             targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 1000, priceIncreaseBasisPoints: 1500}), 
             targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 2500}), 
             targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 2000, priceIncreaseBasisPoints: 3500}), 
             priceDecreaseBasisPoints: 1500});
-        DataTypes.strategyParams[DataTypes.StrategyOption.AGGRESSIVE] = DataTypes.StrategyParams({
+        strategyParams[DataTypes.StrategyOption.AGGRESSIVE] = DataTypes.StrategyParams({
             targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 2000}), 
             targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 2000, priceIncreaseBasisPoints: 3000}), 
             targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 2500, priceIncreaseBasisPoints: 4000}), 
@@ -275,32 +275,30 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         }
     }
 
-    function setWinningOption() public view onlyOwner returns (DataTypes.StrategyOption) {
+    function setWinningOption() public onlyOwner returns (DataTypes.StrategyOption) {
         uint256 mostVoted = conservativeVotes;
         uint256 secondMostVoted = moderateVotes;
+        strategyOption = DataTypes.StrategyOption.CONSERVATIVE;
 
         if (moderateVotes > mostVoted) {
             mostVoted = moderateVotes;
             secondMostVoted = conservativeVotes;
+            strategyOption = DataTypes.StrategyOption.MODERATE;
         }
-
         if (aggressiveVotes > mostVoted) {
             secondMostVoted = mostVoted;
             mostVoted = aggressiveVotes;
+            strategyOption = DataTypes.StrategyOption.AGGRESSIVE;
         } else if (aggressiveVotes > secondMostVoted && aggressiveVotes != mostVoted) {
             secondMostVoted = aggressiveVotes;
         }
-
-        if (mostVoted = secondMostVoted) {
-            _resetVotingStatus();
+        if (mostVoted == secondMostVoted) {
             revert TieVoteAgain();
         }
-
-        DataTypes.strategyOption = mostVoted;
-        return mostVoted;
+        return strategyOption;
     }
 
-    function _resetVotingStatus() public {
+    function resetVotingStatus() public onlyOwner {
         for (uint256 i = 0; i < students.length; i++) {
             studentHasVoted[students[i]] = false;
         }
@@ -313,11 +311,11 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         override 
         returns (bool upkeepNeeded, bytes memory /* performData */) {
         upkeepNeeded = (block.timestamp - lastTimeStampAutomation) > intervalAutomation;
-        uint256 currentPrice=getOraclePrice();
+        // uint256 currentPrice=getOraclePrice();
         // Maria, exitPrice depends on the strategy option is a percentage(now bps) of the average price
-        if (currentPrice <= exitPrice ){
-            stopLoss();
-        }    
+        // if (currentPrice <= exitPrice ){
+        //     stopLoss();
+        // }    
     }
 
     // Chainlink function to perform automation action
