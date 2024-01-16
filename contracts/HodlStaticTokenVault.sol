@@ -2,6 +2,7 @@
 pragma solidity ^0.8.10;
 
 import "./DataTypes.sol";
+import "./StrategyBallot.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // Sepolia 
 // ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
@@ -10,7 +11,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
+contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
 
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
@@ -24,24 +25,16 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     uint256 liquidityToInvest;
     uint256 saveOnlyTotal;
     uint256 underlyingAssetOnProfitTotal;
-    uint256 conservativeVotes;
-    uint256 moderateVotes;
-    uint256 aggressiveVotes;
     bool public isClaimEnabled = false;
     bool public isSetModeEnabled = false;
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
-    DataTypes.StrategyOption public strategyOption;
 
     // to access Eth price from chainlink
     AggregatorV3Interface internal dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
     uint256 public immutable intervalAutomation = 604_800;
     uint256 public lastTimeStampAutomation;
-
-    error NotAStudent();
-    error StudentHasVoted();
-    error TieVoteAgain();
 
     // Associates each strategy option with its parameters
     mapping(DataTypes.StrategyOption => DataTypes.StrategyParams) public strategyParams;
@@ -52,20 +45,8 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
 
     // TODO when student supplies liquidity check his status to either add the balance 
     // to liquidityToInvest or to saveOnlyTotal  
-    address[] students;
     // Associates each student address with their mode
     mapping(address => DataTypes.StudentMode) public studentsMode;  
-    // Associate student with a boolean indicating whether the student has already voted
-    mapping(address => bool) public studentHasVoted;
-
-
-    // Modifier to check if the message sender is a student
-    modifier onlyStudents() {
-        if (!_isStudent(msg.sender)) {
-            revert NotAStudent();
-        }
-        _;
-    }
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
@@ -75,9 +56,9 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         address _strategyAsset,
         address _underlyingAsset,
         address _classAddress,
-        address _owner, // teacher address
+        address _teacherAddress,
         address[] memory _students
-    ) Ownable(_owner) {
+    ) StrategyBallot(_teacherAddress){
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
         lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
@@ -118,7 +99,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         classAddress.transfer(remainingEthBalance);
     }
 
-
     // Automated actions
     function purchaseWeekly() private {
         require(!isStrategyExited, "Strategy exited");
@@ -128,9 +108,9 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     }
 
     function takeProfit() private {
-        // require(!isStrategyExited, "Strategy exited");
-        // require((lastAveragePrice * DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
-        // // TODO Here startegyAssetPrice has to be switched with oracle price feed 
+        require(!isStrategyExited, "Strategy exited");
+        require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
+        // TODO Here startegyAssetPrice has to be switched with oracle price feed 
         // if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
@@ -161,7 +141,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
     }
 
     // TODO!!!
-    function getStudentUnderlyingAssetBalance() public view returns(uint256){
+    function getStudentUnderlyingAssetBalance() public pure returns(uint256){
         return 0;
     }
 
@@ -196,16 +176,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
         for (uint i = 0; i < newStudents.length; i++) {
             students.push(newStudents[i]);
         }
-    }
-
-    // Function to check if an address is a student
-    function _isStudent(address _address) private view returns(bool) {
-        for (uint i = 0; i < students.length; i++) {
-            if (students[i] == _address) {
-                return true;
-            }
-        }
-        return false;
     }
 
     function _calculateAmountfromBasisPoints(uint256 total, uint256 bpsToSell) private pure returns (uint256) {
@@ -257,53 +227,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, Ownable {
             targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 2500, priceIncreaseBasisPoints: 4000}), 
             priceDecreaseBasisPoints: 2000});
     }
-
-    // Ballot functions
-    function voteStrategyOption(DataTypes.StrategyOption votedOption) public {
-        if (!_isStudent(msg.sender)) {
-            revert NotAStudent();
-        }
-        if (studentHasVoted[msg.sender]) {
-            revert StudentHasVoted();
-        }
-        if (votedOption == DataTypes.StrategyOption.CONSERVATIVE) {
-            conservativeVotes += 1;
-        } else if (votedOption == DataTypes.StrategyOption.MODERATE) {
-            moderateVotes += 1;
-        } else {
-            aggressiveVotes += 1;
-        }
-    }
-
-    function setWinningOption() public onlyOwner returns (DataTypes.StrategyOption) {
-        uint256 mostVoted = conservativeVotes;
-        uint256 secondMostVoted = moderateVotes;
-        strategyOption = DataTypes.StrategyOption.CONSERVATIVE;
-
-        if (moderateVotes > mostVoted) {
-            mostVoted = moderateVotes;
-            secondMostVoted = conservativeVotes;
-            strategyOption = DataTypes.StrategyOption.MODERATE;
-        }
-        if (aggressiveVotes > mostVoted) {
-            secondMostVoted = mostVoted;
-            mostVoted = aggressiveVotes;
-            strategyOption = DataTypes.StrategyOption.AGGRESSIVE;
-        } else if (aggressiveVotes > secondMostVoted && aggressiveVotes != mostVoted) {
-            secondMostVoted = aggressiveVotes;
-        }
-        if (mostVoted == secondMostVoted) {
-            revert TieVoteAgain();
-        }
-        return strategyOption;
-    }
-
-    function resetVotingStatus() public onlyOwner {
-        for (uint256 i = 0; i < students.length; i++) {
-            studentHasVoted[students[i]] = false;
-        }
-    }
-
+    
     // Chainlink function for setting automation based on a timeinterval
     function checkUpkeep(bytes calldata /* checkData */) 
         external 
