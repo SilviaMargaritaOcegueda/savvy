@@ -25,11 +25,14 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     uint256 liquidityToInvest;
     uint256 saveOnlyTotal;
     uint256 underlyingAssetOnProfitTotal;
+    uint256 conservativeVotes;
+    uint256 moderateVotes;
+    uint256 aggressiveVotes;
     bool public isClaimEnabled = false;
     bool public isSetModeEnabled = false;
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
-    DataTypes.StrategyOption public strategyOption;
+    StrategyOption public strategyOption;
 
     // to access Eth price from chainlink
     AggregatorV3Interface internal dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
@@ -37,21 +40,24 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     uint256 public immutable intervalAutomation = uint256(604_800);
     uint256 public lastTimeStampAutomation = finalPurchaseTimestamp + (1 days);
 
-    // Custom error for non-student callers
     error NotAStudent();
+    error StudentHasVoted();
+    error TieVoteAgain();
 
-    // Mapping to associate each strategy option with its parameters
-    mapping(DataTypes.StrategyOption => DataTypes.StrategyParams) public strategyParams;
+    // Associates each strategy option with its parameters
+    mapping(StrategyOption => StrategyParams) public strategyParams;
 
     uint256[] public prices;
-    // Mapping to associate each purchase price with the amount of strategy asset purchased
+    // Associates each purchase price with the amount of strategy asset purchased at that price
     mapping(uint256 => uint256 amountOfStrategyAsset) public purchasePrices;
 
     // TODO when student supplies liquidity check his status to either add the balance 
     // to liquidityToInvest or to saveOnlyTotal  
     address[] students;
-    // Mapping to associate each student address with their mode
-    mapping(address => DataTypes.StudentMode) public studentsMode;  
+    // Associates each student address with their mode
+    mapping(address => StudentMode) public studentsMode;  
+    // Associate student with a boolean indicating whether the student has already voted
+    mapping(address => bool) public studentHasVoted;
 
 
     // Modifier to check if the message sender is a student
@@ -64,7 +70,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
-        DataTypes.StrategyOption _strategyOption,
         uint256 _weeklyAmount,
         uint256 _initialDepositTimestamp,
         uint256 _finalDepositTimestamp,
@@ -80,7 +85,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         strategyAsset = _strategyAsset;
         underlyingAsset = _underlyingAsset;
         _addStudents(_newStudents);
-        strategyOption = _strategyOption;
         classAddress = _classAddress;
         weeklyAmount = _weeklyAmount;
     }
@@ -88,7 +92,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     // only owner functions
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
-    function restartStrategy(DataTypes.StrategyOption newStrategy) public onlyOwner {
+    function restartStrategy(StrategyOption newStrategy) public onlyOwner {
         require(isStrategyStopped);
         _updateLiquidityToInvest();
         _clearPurchasePrices();
@@ -206,7 +210,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         }
         return totalValue / totalAmount;  // Rounds down to the nearest integer
     }
-    
+
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
             targetPrice1: TargetPriceParams({sellPercentage: 5, priceIncreasePercentage: 10}), 
@@ -225,21 +229,65 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
             priceDecreasePercentage: 20});
     }
 
+    // Ballot functions
+    function voteStrategyOption(StrategyOption votedOption) public {
+        if (!_isStudent(msg.sender)) {
+            revert NotAStudent();
+        }
+        if (studentHasVoted[msg.sender]) {
+            revert StudentHasVoted();
+        }
+        if (votedOption == StrategyOption.CONSERVATIVE) {
+            conservativeVotes += 1;
+        } else if (votedOption == StrategyOption.MODERATE) {
+            moderateVotes += 1;
+        } else {
+            aggressiveVotes += 1;
+        }
+    }
+
+    function setWinningOption() public view onlyOwner returns (StrategyOption) {
+        uint256 mostVoted = conservativeVotes;
+        uint256 secondMostVoted = moderateVotes;
+
+        if (moderateVotes > mostVoted) {
+            mostVoted = moderateVotes;
+            secondMostVoted = conservativeVotes;
+        }
+
+        if (aggressiveVotes > mostVoted) {
+            secondMostVoted = mostVoted;
+            mostVoted = aggressiveVotes;
+        } else if (aggressiveVotes > secondMostVoted && aggressiveVotes != mostVoted) {
+            secondMostVoted = aggressiveVotes;
+        }
+
+        if (mostVoted = secondMostVoted) {
+            _resetVotingStatus();
+            revert TieVoteAgain();
+        }
+
+        strategyOption = mostVoted;
+        return mostVoted;
+    }
+
+    function _resetVotingStatus() public {
+        for (uint256 i = 0; i < students.length; i++) {
+            studentHasVoted[students[i]] = false;
+        }
+    }
+
     // Chainlink function for setting automation based on a timeinterval
-    function checkUpkeep(
-        bytes calldata /* checkData */
-    )
-        external
-        view
-        override
-        returns (bool upkeepNeeded, bytes memory /* performData */)
-    {
+    function checkUpkeep(bytes calldata /* checkData */) 
+        external 
+        view 
+        override 
+        returns (bool upkeepNeeded, bytes memory /* performData */) {
         upkeepNeeded = (block.timestamp - lastTimeStampAutomation) > intervalAutomation;
         // We don't use the checkData in this example. The checkData is defined when the Upkeep was registered.
     }
 
     // Chainlink function to perform automation action
-    // we have to call what shall be performed during autamation inside this function
     function performUpkeep(bytes calldata /* performData */) external override {
         if ((block.timestamp - lastTimeStampAutomation) > intervalAutomation) {
             lastTimeStampAutomation = block.timestamp;
