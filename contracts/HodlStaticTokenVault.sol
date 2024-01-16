@@ -10,7 +10,9 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 
 contract HodlStaticTokenVault is AutomationCompatibleInterface {
-    AggregatorV3Interface internal dataFeed;
+    using DataTypes for DataTypes.StrategyOption;
+    using DataTypes for DataTypes.StrategyParams;
+    using DataTypes for DataTypes.StudentMode;
 
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
@@ -27,29 +29,29 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     bool public isSetModeEnabled = false;
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
-    StrategyOption public strategyOption;
+    DataTypes.StrategyOption public strategyOption;
 
-
-
+    // to access Eth price from chainlink
+    AggregatorV3Interface internal dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
-    uint256 public immutable intervalAutomation;
-    uint256 public lastTimeStampAutomation;
+    uint256 public immutable intervalAutomation = uint256(604_800);
+    uint256 public lastTimeStampAutomation = finalPurchaseTimestamp + (1 days);
 
     // Custom error for non-student callers
     error NotAStudent();
 
     // Mapping to associate each strategy option with its parameters
-    mapping(StrategyOption => StrategyParams) public strategyParams;
+    mapping(DataTypes.StrategyOption => DataTypes.StrategyParams) public strategyParams;
 
     uint256[] public prices;
     // Mapping to associate each purchase price with the amount of strategy asset purchased
-    mapping(uint256 => amountOfStrategyAsset) public purchasePrices;
+    mapping(uint256 => uint256 amountOfStrategyAsset) public purchasePrices;
 
     // TODO when student supplies liquidity check his status to either add the balance 
     // to liquidityToInvest or to saveOnlyTotal  
     address[] students;
     // Mapping to associate each student address with their mode
-    mapping(address => StudentMode) public studentsMode;  
+    mapping(address => DataTypes.StudentMode) public studentsMode;  
 
 
     // Modifier to check if the message sender is a student
@@ -62,7 +64,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
-        StrategyOption _strategyOption,
+        DataTypes.StrategyOption _strategyOption,
         uint256 _weeklyAmount,
         uint256 _initialDepositTimestamp,
         uint256 _finalDepositTimestamp,
@@ -81,23 +83,16 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         strategyOption = _strategyOption;
         classAddress = _classAddress;
         weeklyAmount = _weeklyAmount;
-        // to access Eth price from chainlink
-        dataFeed = AggregatorV3Interface(
-            0x694AA1769357215DE4FAC081bf1f309aDC325306
-        );
-        // set everything for automation
-        intervalAutomation = _updateInterval;
-        lastTimeStampAutomation = block.timestamp;
     }
 
     // only owner functions
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
-    function restartStrategy(StrategyOption newStrategy) public onlyOwner {
+    function restartStrategy(DataTypes.StrategyOption newStrategy) public onlyOwner {
         require(isStrategyStopped);
         _updateLiquidityToInvest();
         _clearPurchasePrices();
-        (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
+        (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
         lastAveragePrice = _getAveragePrice();
         strategyOption = newStrategy;
@@ -120,7 +115,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
     // Automated actions
     function purchaseWeekly() private {
         require(!isStrategyExited, "Strategy exited");
-        (uint256 amount, uint256 price) = _buyStrategyAsset(liquidityToInvest);
+        (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
         lastAveragePrice = _getAveragePrice();
     }
@@ -159,7 +154,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         return receivedAmount;
     }
 
-    function _buyStrategyAsset(uint256 liquidityToInvest) private returns (uint256 price, uint256 receivedAmount) {
+    function _buyStrategyAsset() private returns (uint256 price, uint256 receivedAmount) {
         return _switchAssets(underlyingAsset, strategyAsset, liquidityToInvest);
     }
 
@@ -212,18 +207,6 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         return totalValue / totalAmount;  // Rounds down to the nearest integer
     }
     
-    // function _getAverage() public view returns (int) {
-    //     // how shall it be calculated? always a week window?
-    //     (
-    //         /* uint80 roundID */,
-    //         int answer,
-    //         /*uint startedAt*/,
-    //         /*uint timeStamp*/,
-    //         /*uint80 answeredInRound*/
-    //     ) = dataFeed.latestRoundData();
-    //     return answer;
-    // }
-    
     function _setStrategyParams() private {
         strategyParams[StrategyOption.CONSERVATIVE] = StrategyParams({
             targetPrice1: TargetPriceParams({sellPercentage: 5, priceIncreasePercentage: 10}), 
@@ -251,18 +234,29 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface {
         override
         returns (bool upkeepNeeded, bytes memory /* performData */)
     {
-        upkeepNeeded = (block.timestamp - lastTimeStamp) > interval;
+        upkeepNeeded = (block.timestamp - lastTimeStampAutomation) > intervalAutomation;
         // We don't use the checkData in this example. The checkData is defined when the Upkeep was registered.
     }
 
     // Chainlink function to perform automation action
     // we have to call what shall be performed during autamation inside this function
     function performUpkeep(bytes calldata /* performData */) external override {
-        if ((block.timestamp - lastTimeStamp) > interval) {
-            lastTimeStamp = block.timestamp;
-            counter = counter + 1;
+        if ((block.timestamp - lastTimeStampAutomation) > intervalAutomation) {
+            lastTimeStampAutomation = block.timestamp;
+            purchaseWeekly();
         }
         // We don't use the performData in this example. The performData is generated by the Automation Node's call to your checkUpkeep function
+    }
+
+    function getOraclePrice() public view returns(int) {
+        (
+            /* uint80 roundID */,
+            int answer,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = dataFeed.latestRoundData();
+        return answer;
     }
 }
 
