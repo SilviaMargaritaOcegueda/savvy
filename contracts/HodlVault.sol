@@ -3,7 +3,7 @@ pragma solidity ^0.8.10;
 
 import "./utils/DataTypes.sol";
 import "./StrategyBallot.sol";
-import "./ERC4626.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // Sepolia 
@@ -62,6 +62,7 @@ contract HodlVault is
     // to liquidityToInvest or to saveOnlyTotal  
     // Associates each student address with their mode
     mapping(address => DataTypes.StudentMode) public studentsMode;  
+    mapping(address => uint256) public saveOnlybalances;
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
@@ -154,14 +155,10 @@ contract HodlVault is
     function setStudentMode(DataTypes.StudentMode newMode) public onlyStudents {
         studentsMode[msg.sender] = newMode;
         if (newMode == DataTypes.StudentMode.SAVE_ONLY) {
-            // TODO use the  ERC function to get a user underlying asset balance
-            saveOnlyTotal += getStudentUnderlyingAssetBalance();
-        }
-    }
+            saveOnlyTotal += convertToAssets(balanceOf(msg.sender));
+            // TODO register balance in mapping
 
-    // TODO!!!
-    function getStudentUnderlyingAssetBalance() public pure returns(uint256){
-        return 0;
+        }
     }
 
     function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 price, uint256 receivedAmount) {
