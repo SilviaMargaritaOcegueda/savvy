@@ -109,7 +109,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
 
     function takeProfit() private {
         require(!isStrategyExited, "Strategy exited");
-        require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
+        //require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
         // TODO Here startegyAssetPrice has to be switched with oracle price feed 
         // if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
