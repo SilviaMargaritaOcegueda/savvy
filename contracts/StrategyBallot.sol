@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
-import "./DataTypes.sol";
+import "./utils/DataTypes.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract StrategyBallot is Ownable {

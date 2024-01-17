@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
-import "./DataTypes.sol";
+import "./utils/DataTypes.sol";
 import "./StrategyBallot.sol";
 import "./ERC4626.sol";
+import "./ERC20.sol";
+
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // Sepolia 
 // ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
@@ -13,7 +15,7 @@ import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract HodlStaticTokenVault is 
-    ERC20('savvyGHO', 'sGHO', 18),
+    ERC20,
     AutomationCompatibleInterface, 
     StrategyBallot, 
     ERC4626 
@@ -63,7 +65,7 @@ contract HodlStaticTokenVault is
         address _classAddress,
         address _teacherAddress,
         address[] memory _students
-    ) StrategyBallot(_teacherAddress) ERC4626(_underlyingAsset) {
+    ) StrategyBallot(_teacherAddress) ERC4626(_underlyingAsset) ERC20('savvyGHO', 'sGHO') {
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
         lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
@@ -276,7 +278,11 @@ contract HodlStaticTokenVault is
      * @dev Internal conversion function (from shares to assets) with support for rounding direction.
      */
     function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
-        return shares.mulDiv(totalAssets() + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
+        (, bytes memory encodedBalance) = address(asset_).staticcall(
+            abi.encodeCall(IERC20.balanceOf, address(this))
+        );
+        uint256 returnedBalance = abi.decode(encodedBalance, (uint256));
+        return returnedBalance / totalSupply();
     }
 }
 
