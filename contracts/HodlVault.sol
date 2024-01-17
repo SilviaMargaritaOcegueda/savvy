@@ -21,6 +21,13 @@ contract HodlVault is
 {
     using Math for uint256;
 
+    event Profit(uint256 tier, uint256 price, uint256 soldAmount);
+
+    event StopLoss(
+        uint256 price,
+        uint256 receivedAmount
+    );
+
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
     address payable public classAddress;
@@ -122,20 +129,24 @@ contract HodlVault is
         // if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
+        // emit Profit(3, price, receivedAmount);
         // } else if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.sellBasisPoints);
+        // emit Profit(2, price, receivedAmount);
         // } else if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.sellBasisPoints);
+        // emit Profit(1, price, receivedAmount);
         // }
     }
 
     function stopLoss() private {
         require(!isStrategyExited);
-        _sellStrategyAsset(address(this).balance, 10_000);
+        (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, 10_000);
         isSetModeEnabled = true;
         isStrategyStopped = true;
+        emit StopLoss(price, receivedAmount);
     }
 
     // Students functions
@@ -153,10 +164,9 @@ contract HodlVault is
         return 0;
     }
 
-    function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 receivedAmount) {
+    function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 price, uint256 receivedAmount) {
         uint256 amountToSwitch = _calculateAmountfromBasisPoints(total, bpsToSell);
-        ( , receivedAmount) = _switchAssets(strategyAsset, underlyingAsset, amountToSwitch);
-        return receivedAmount;
+        return _switchAssets(strategyAsset, underlyingAsset, amountToSwitch);
     }
 
     function _buyStrategyAsset() private returns (uint256 price, uint256 receivedAmount) {
