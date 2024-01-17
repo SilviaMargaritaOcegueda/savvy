@@ -3,6 +3,7 @@ pragma solidity ^0.8.10;
 
 import "./DataTypes.sol";
 import "./StrategyBallot.sol";
+import "./ERC4626.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // Sepolia 
 // ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
@@ -11,8 +12,12 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
-
+contract HodlStaticTokenVault is 
+    ERC20('savvyGHO', 'sGHO', 18),
+    AutomationCompatibleInterface, 
+    StrategyBallot, 
+    ERC4626 
+{
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
     address payable public classAddress;
@@ -58,7 +63,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
         address _classAddress,
         address _teacherAddress,
         address[] memory _students
-    ) StrategyBallot(_teacherAddress){
+    ) StrategyBallot(_teacherAddress) ERC4626(_underlyingAsset) {
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
         lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
@@ -171,7 +176,7 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
         isClaimEnabled = false;
     }
 
-    // Adds the provided students to the list of students.
+    // Adds students' addresses to the list of students.
     function _addStudents(address[] calldata newStudents) private {
         for (uint i = 0; i < newStudents.length; i++) {
             students.push(newStudents[i]);
@@ -261,6 +266,17 @@ contract HodlStaticTokenVault is AutomationCompatibleInterface, StrategyBallot {
             /*uint80 answeredInRound*/
         ) = dataFeed.latestRoundData();
         return answer;
+    }
+
+    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view virtual override returns (uint256) {
+        return assets;
+    }
+
+    /**
+     * @dev Internal conversion function (from shares to assets) with support for rounding direction.
+     */
+    function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
+        return shares.mulDiv(totalAssets() + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
     }
 }
 
