@@ -4,7 +4,6 @@ pragma solidity ^0.8.10;
 import "./utils/DataTypes.sol";
 import "./StrategyBallot.sol";
 import "./ERC4626.sol";
-import "./ERC20.sol";
 
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 // Sepolia 
@@ -14,12 +13,14 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract HodlStaticTokenVault is 
+contract HodlVault is 
     ERC20,
     AutomationCompatibleInterface, 
     StrategyBallot, 
     ERC4626 
 {
+    using Math for uint256;
+
     address public immutable strategyAsset;
     address public immutable underlyingAsset;
     address payable public classAddress;
@@ -278,11 +279,11 @@ contract HodlStaticTokenVault is
      * @dev Internal conversion function (from shares to assets) with support for rounding direction.
      */
     function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
-        (, bytes memory encodedBalance) = address(asset_).staticcall(
+        (, bytes memory encodedBalance) = asset().staticcall(
             abi.encodeCall(IERC20.balanceOf, address(this))
         );
         uint256 returnedBalance = abi.decode(encodedBalance, (uint256));
-        return returnedBalance / totalSupply();
+        return shares.mulDiv(returnedBalance + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
     }
 }
 
