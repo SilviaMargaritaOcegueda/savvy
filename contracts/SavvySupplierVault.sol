@@ -32,6 +32,8 @@ contract SavvySupplierVault is ERC4626, Ownable {
     // WETH-VariableDebtToken-Aave       │ '0x22a35DB253f4F6D0029025D6312A3BdAb20C2c6A' │
     // WETH-StableDebtToken-Aave        │ '0xEb45D5A0efF06fFb88f6A70811c08375A8de84A3' │
     // WETH-TestnetMintableERC20-Aave │ '0xC558DBdd856501FCd9aaF1E62eae57A9F0629a3c' │
+    
+    // TODO Find the correct address for ETH!
     address private immutable ethAddress =
         0x07C725d58437504CA5f814AE406e70E21C5e8e9e;
     IERC20 private eth;
