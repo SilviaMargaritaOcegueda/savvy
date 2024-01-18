@@ -56,8 +56,6 @@ contract HodlVault is
     // Associates each purchase price with the amount of strategy asset purchased at that price
     mapping(uint256 => uint256) public purchasePrices;
 
-    // TODO when student supplies liquidity check his status to either add the balance 
-    // to liquidityToInvest or to saveOnlyTotal  
     // Associates each student address with their mode
     mapping(address => DataTypes.StudentMode) public studentsMode;  
     // Associates each student address with their balance on saveOnly mode
@@ -151,11 +149,11 @@ contract HodlVault is
     // Students functions
     /// @dev Sets the mode for the calling student.
     function setStudentMode(DataTypes.StudentMode newMode) public onlyStudents {
-        studentsMode[msg.sender] = newMode;
+        studentsMode[_msgSender()] = newMode;
         if (newMode == DataTypes.StudentMode.SAVE_ONLY) {
-            saveOnlyTotal += convertToAssets(balanceOf(msg.sender));
-            // TODO register balance in mapping
-
+            uint256 studentBalance = convertToAssets(balanceOf(_msgSender()));
+            saveOnlyTotal += studentBalance;
+            saveOnlybalances[_msgSender()] = studentBalance; 
         }
     }
 
@@ -177,16 +175,36 @@ contract HodlVault is
         return shares;
     }
 
-    function withdraw(uint256 assets, address receiver, address owner) public virtual override onlyStudents returns (uint256) {
+    function withdraw(
+        uint256 assets, 
+        address receiver, 
+        address owner
+    ) public virtual override onlyStudents returns (uint256) {
         uint256 maxAssets = maxWithdraw(owner);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
         }
 
-        uint256 shares = previewWithdraw(assets);
+        uint256 shares;
+        if (assets == maxAssets) {
+            shares = balanceOf(owner);
+        } else {
+            shares = assets.mulDiv(balanceOf(owner), maxAssets, Math.Rounding.Ceil);
+        }
         _withdraw(_msgSender(), receiver, owner, assets, shares);
 
         return shares;
+    }
+
+    function maxWithdraw(address owner) public view virtual override returns (uint256) {
+        uint256 assets;
+        if (studentsMode[owner] == DataTypes.StudentMode.SAVE_ONLY) {
+            assets = saveOnlybalances[owner];
+        } else {
+            assets = 
+            balanceOf(owner).mulDiv(_thisBalanceOfUnderlyingAsset() - saveOnlyTotal, totalSupply(), Math.Rounding.Floor);
+        }
+        return assets;
     }
 
     function redeem(uint256 shares, address receiver, address owner) public virtual override onlyStudents returns (uint256) {
@@ -197,8 +215,12 @@ contract HodlVault is
         if (shares > maxShares) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
         }
-
-        uint256 assets = previewRedeem(shares);
+        uint256 assets;
+        if (studentsMode[owner] == DataTypes.StudentMode.SAVE_ONLY) {
+            assets = shares.mulDiv(saveOnlybalances[owner], balanceOf(owner), Math.Rounding.Floor);
+        } else {
+            assets = shares.mulDiv(_thisBalanceOfUnderlyingAsset() - saveOnlyTotal, totalSupply(), Math.Rounding.Floor);
+        }
         _withdraw(_msgSender(), receiver, owner, assets, shares);
 
         return assets;
@@ -209,13 +231,10 @@ contract HodlVault is
     }
 
     function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
-        (, bytes memory encodedBalance) = asset().staticcall(
-            abi.encodeCall(IERC20.balanceOf, address(this))
-        );
-        uint256 returnedBalance = abi.decode(encodedBalance, (uint256));
+        uint256 returnedBalance = _thisBalanceOfUnderlyingAsset();
         return shares.mulDiv(returnedBalance + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
     }
-    
+
     function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 price, uint256 receivedAmount) {
         uint256 amountToSwitch = _calculateAmountfromBasisPoints(total, bpsToSell);
         return _switchAssets(strategyAsset, asset(), amountToSwitch);
@@ -224,7 +243,6 @@ contract HodlVault is
     function _buyStrategyAsset() private returns (uint256 price, uint256 receivedAmount) {
         return _switchAssets(asset(), strategyAsset, liquidityToInvest);
     }
-
 
     //TODO
     function _switchAssets(
