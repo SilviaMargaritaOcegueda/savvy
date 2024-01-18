@@ -4,12 +4,7 @@ pragma solidity ^0.8.10;
 import "./utils/DataTypes.sol";
 import "./StrategyBallot.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-// Sepolia 
-// ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
-// GHO / USD 0x635A86F9fdD16Ff09A0701C305D3a845F1758b8E
-// chainlink automation 
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -43,8 +38,8 @@ contract HodlVault is
     bool public isStrategyExited = false;
     bool public isStrategyStopped = false;
 
-    // to access Eth price from chainlink
-    AggregatorV3Interface internal dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
+    // To access strategy asset price from chainlink
+    AggregatorV3Interface internal dataFeed; 
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
     uint256 public immutable intervalAutomation = 604_800;
     uint256 public lastTimeStampAutomation;
@@ -70,6 +65,7 @@ contract HodlVault is
         uint256 _finalDepositTimestamp,
         address _strategyAsset,
         address _underlyingAsset,
+        address _aggregator,
         address _classAddress,
         address _teacherAddress,
         address[] memory _students
@@ -82,6 +78,7 @@ contract HodlVault is
         students = _students;
         classAddress = payable(_classAddress);
         weeklyAmount = _weeklyAmount;
+        dataFeed = AggregatorV3Interface(_aggregator);
     }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
@@ -119,38 +116,26 @@ contract HodlVault is
         lastAveragePrice = getAveragePrice();
     }
 
-    function takeProfit() private {
+    function _takeProfit() private {
         require(!isStrategyExited, "Strategy exited");
         require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
         require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
-        // TODO Here startegyAssetPrice has to be switched with oracle price feed 
-        if (getOraclePrice() >= lastAveragePrice + 
+        if (_getOraclePrice() >= lastAveragePrice + 
             (lastAveragePrice * (strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
-             underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice3.sellBasisPoints);
+             (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice3.sellBasisPoints);
+             underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(3, price, receivedAmount);
-        } else if (getOraclePrice() >= lastAveragePrice + 
+        } else if (_getOraclePrice() >= lastAveragePrice + 
             (lastAveragePrice * (strategyParams[strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice2.sellBasisPoints);
+            (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice2.sellBasisPoints);
+            underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(2, price, receivedAmount);
-        } else if (getOraclePrice() >= lastAveragePrice + 
+        } else if (_getOraclePrice() >= lastAveragePrice + 
             (lastAveragePrice * (strategyParams[strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
-            underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice1.sellBasisPoints);
+            (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice1.sellBasisPoints);
+            underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(1, price, receivedAmount);
         }
-        // TODO Here startegyAssetPrice has to be switched with oracle price feed 
-        // if (getEthUsdPrice() >= lastAveragePrice + 
-        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
-        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
-        // emit ProfitTaken(3, price, receivedAmount);
-        // } else if (getEthUsdPrice() >= lastAveragePrice + 
-        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
-        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.sellBasisPoints);
-        // emit ProfitTaken(2, price, receivedAmount);
-        // } else if (getEthUsdPrice() >= lastAveragePrice + 
-        // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
-        //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.sellBasisPoints);
-        // emit ProfitTaken(1, price, receivedAmount);
-        // }
     }
 
     function stopLoss() private {
@@ -177,10 +162,9 @@ contract HodlVault is
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
-
+        
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
-
         if (studentsMode[_msgSender()] == DataTypes.StudentMode.SAVE_ONLY) {
             saveOnlybalances[_msgSender()] += assets;
         } else {
@@ -219,6 +203,7 @@ contract HodlVault is
             assets = 
             balanceOf(owner).mulDiv(_thisBalanceOfUnderlyingAsset() - saveOnlyTotal, totalSupply(), Math.Rounding.Floor);
         }
+        
         return assets;
     }
 
@@ -226,10 +211,12 @@ contract HodlVault is
         if (!isClaimEnabled) {
             revert ClaimsDisabled();
         }
+        
         uint256 maxShares = maxRedeem(owner);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
         }
+        
         uint256 assets;
         if (studentsMode[owner] == DataTypes.StudentMode.SAVE_ONLY) {
             assets = shares.mulDiv(saveOnlybalances[owner], balanceOf(owner), Math.Rounding.Floor);
@@ -372,16 +359,15 @@ contract HodlVault is
         // We don't use the performData in this example. The performData is generated by the Automation Node's call to your checkUpkeep function
     }
 
-    function getOraclePrice() public view returns(uint) {
+    function _getOraclePrice() private view returns(uint256) {
         (
             /* uint80 roundID */,
-            int answer,
+            int256 answer,
             /*uint startedAt*/,
             /*uint timeStamp*/,
             /*uint80 answeredInRound*/
         ) = dataFeed.latestRoundData();
-        uint256 uanswer = uint(answer);
-        return uanswer;
+        return uint256(answer);
     }
     
 }
