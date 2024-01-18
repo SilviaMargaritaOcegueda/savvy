@@ -121,24 +121,37 @@ contract HodlVault is
 
     function _takeProfit() private {
         require(!isStrategyExited, "Strategy exited");
-        require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
-        require((lastAveragePrice * strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) >= 10_000, "Price increment rounds to zero");
-        if (_getOraclePrice() >= lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
+        (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
+        require((targetPrice3 - lastAveragePrice) >= 10_000, "Price increment rounds to zero");
+        if (_getOraclePrice() >= targetPrice3) {
              (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice3.sellBasisPoints);
              underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(3, price, receivedAmount);
-        } else if (_getOraclePrice() >= lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
+        } else if (_getOraclePrice() >= targetPrice2) {
             (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice2.sellBasisPoints);
             underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(2, price, receivedAmount);
-        } else if (_getOraclePrice() >= lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
+        } else if (_getOraclePrice() >= targetPrice1) {
             (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice1.sellBasisPoints);
             underlyingAssetOnProfitTotal += receivedAmount;
             emit ProfitTaken(1, price, receivedAmount);
         }
+    }
+
+    function _getTargetPrices() private view returns (uint256, uint256, uint256) {
+        uint256 targetPrice3 = lastAveragePrice + 
+            (lastAveragePrice * (strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000);
+        uint256 targetPrice2 = lastAveragePrice + 
+            (lastAveragePrice * (strategyParams[strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000);
+        uint256 targetPrice1 = lastAveragePrice + 
+            (lastAveragePrice * (strategyParams[strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000);
+        
+        return (targetPrice3, targetPrice2, targetPrice1);
+    }
+
+    function _getStopPrice() private view returns (uint256) {
+       return lastAveragePrice + 
+            (lastAveragePrice * (strategyParams[strategyOption].priceDecreaseBasisPoints) / 10_000);
     }
 
     function _stopLoss() private {
