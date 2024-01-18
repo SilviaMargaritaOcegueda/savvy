@@ -15,7 +15,10 @@ contract HodlVault is
 {
     using Math for uint256;
 
-    event ProfitTaken(uint256 tier, uint256 price, uint256 soldAmount);
+    event ProfitTaken(
+        uint256 tier, 
+        uint256 price, 
+        uint256 soldAmount);
 
     event LossStopped(
         uint256 price,
@@ -138,7 +141,7 @@ contract HodlVault is
         }
     }
 
-    function stopLoss() private {
+    function _stopLoss() private {
         require(!isStrategyExited);
         (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, 10_000);
         isSetModeEnabled = true;
