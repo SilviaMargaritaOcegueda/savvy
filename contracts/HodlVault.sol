@@ -14,22 +14,20 @@ import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract HodlVault is 
-    ERC20,
     AutomationCompatibleInterface, 
     StrategyBallot, 
     ERC4626 
 {
     using Math for uint256;
 
-    event Profit(uint256 tier, uint256 price, uint256 soldAmount);
+    event ProfitTaken(uint256 tier, uint256 price, uint256 soldAmount);
 
-    event StopLoss(
+    event LossStopped(
         uint256 price,
         uint256 receivedAmount
     );
 
     address public immutable strategyAsset;
-    address public immutable underlyingAsset;
     address payable public classAddress;
     uint256 public immutable firstPurchaseTimestamp;
     uint256 public immutable finalPurchaseTimestamp;
@@ -62,7 +60,10 @@ contract HodlVault is
     // to liquidityToInvest or to saveOnlyTotal  
     // Associates each student address with their mode
     mapping(address => DataTypes.StudentMode) public studentsMode;  
+    // Associates each student address with their balance on saveOnly mode
     mapping(address => uint256) public saveOnlybalances;
+
+    error ClaimsDisabled();
 
     /// @dev Initializes the HodlStaticTokenVault contract with the provided parameters.
     constructor(
@@ -74,19 +75,16 @@ contract HodlVault is
         address _classAddress,
         address _teacherAddress,
         address[] memory _students
-    ) StrategyBallot(_teacherAddress) ERC4626(_underlyingAsset) ERC20('savvyGHO', 'sGHO') {
+    ) StrategyBallot(_teacherAddress) ERC4626(IERC20(_underlyingAsset)) ERC20('savvyGHO', 'sGHO') {
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
         lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
         finalWithdrawalTimestamp = lastTimeStampAutomation + 90 days;
         strategyAsset = _strategyAsset;
-        underlyingAsset = _underlyingAsset;
         students = _students;
         classAddress = payable(_classAddress);
         weeklyAmount = _weeklyAmount;
     }
-
-    // only owner functions
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
     function restartStrategy(DataTypes.StrategyOption newStrategy) public onlyOwner {
@@ -95,7 +93,7 @@ contract HodlVault is
         _clearPurchasePrices();
         (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
-        lastAveragePrice = _getAveragePrice();
+        lastAveragePrice = getAveragePrice();
         strategyOption = newStrategy;
         isStrategyExited = false; 
     }
@@ -120,7 +118,7 @@ contract HodlVault is
         require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
-        lastAveragePrice = _getAveragePrice();
+        lastAveragePrice = getAveragePrice();
     }
 
     function takeProfit() private {
@@ -130,15 +128,15 @@ contract HodlVault is
         // if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice3.sellBasisPoints);
-        // emit Profit(3, price, receivedAmount);
+        // emit ProfitTaken(3, price, receivedAmount);
         // } else if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice2.sellBasisPoints);
-        // emit Profit(2, price, receivedAmount);
+        // emit ProfitTaken(2, price, receivedAmount);
         // } else if (getEthUsdPrice() >= lastAveragePrice + 
         // (lastAveragePrice * (DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000)) {
         //     underlyingAssetOnProfitTotal += _sellStrategyAsset(address(this).balance, DataTypes.strategyParams[DataTypes.strategyOption].targetPrice1.sellBasisPoints);
-        // emit Profit(1, price, receivedAmount);
+        // emit ProfitTaken(1, price, receivedAmount);
         // }
     }
 
@@ -147,7 +145,7 @@ contract HodlVault is
         (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, 10_000);
         isSetModeEnabled = true;
         isStrategyStopped = true;
-        emit StopLoss(price, receivedAmount);
+        emit LossStopped(price, receivedAmount);
     }
 
     // Students functions
@@ -161,17 +159,79 @@ contract HodlVault is
         }
     }
 
+    function deposit(uint256 assets, address receiver) public virtual override onlyStudents returns (uint256) {
+        uint256 maxAssets = maxDeposit(receiver);
+        if (assets > maxAssets) {
+            revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
+        }
+
+        uint256 shares = previewDeposit(assets);
+        _deposit(_msgSender(), receiver, assets, shares);
+
+        if (studentsMode[_msgSender()] == DataTypes.StudentMode.SAVE_ONLY) {
+            saveOnlybalances[_msgSender()] += assets;
+        } else {
+            liquidityToInvest += assets;
+        }
+
+        return shares;
+    }
+
+    function withdraw(uint256 assets, address receiver, address owner) public virtual override onlyStudents returns (uint256) {
+        uint256 maxAssets = maxWithdraw(owner);
+        if (assets > maxAssets) {
+            revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
+        }
+
+        uint256 shares = previewWithdraw(assets);
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
+
+        return shares;
+    }
+
+    function redeem(uint256 shares, address receiver, address owner) public virtual override onlyStudents returns (uint256) {
+        if (!isClaimEnabled) {
+            revert ClaimsDisabled();
+        }
+        uint256 maxShares = maxRedeem(owner);
+        if (shares > maxShares) {
+            revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
+        }
+
+        uint256 assets = previewRedeem(shares);
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
+
+        return assets;
+    }
+
+    function _convertToShares(uint256 assets, Math.Rounding /* rounding */) internal view virtual override returns (uint256) {
+        return assets;
+    }
+
+    function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
+        (, bytes memory encodedBalance) = asset().staticcall(
+            abi.encodeCall(IERC20.balanceOf, address(this))
+        );
+        uint256 returnedBalance = abi.decode(encodedBalance, (uint256));
+        return shares.mulDiv(returnedBalance + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
+    }
+    
     function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 price, uint256 receivedAmount) {
         uint256 amountToSwitch = _calculateAmountfromBasisPoints(total, bpsToSell);
-        return _switchAssets(strategyAsset, underlyingAsset, amountToSwitch);
+        return _switchAssets(strategyAsset, asset(), amountToSwitch);
     }
 
     function _buyStrategyAsset() private returns (uint256 price, uint256 receivedAmount) {
-        return _switchAssets(underlyingAsset, strategyAsset, liquidityToInvest);
+        return _switchAssets(asset(), strategyAsset, liquidityToInvest);
     }
 
+
     //TODO
-    function _switchAssets(address assetOut, address assetIn, uint amountofAssetOut) private returns (uint price, uint256 receivedAmount) {
+    function _switchAssets(
+        address assetOut, 
+        address assetIn, uint 
+        amountofAssetOut
+    ) private returns (uint price, uint256 receivedAmount) {
         // TODO declare and implement function
         // return aave.switchTokens();
         // return 0;
@@ -198,7 +258,7 @@ contract HodlVault is
         return total * bpsToSell / 10_000;
     }
     
-    function _getAveragePrice() internal view returns (uint256) {
+    function getAveragePrice() public view returns (uint256) {
         uint256 totalValue = 0;
         uint256 totalAmount = 0;
 
@@ -212,10 +272,22 @@ contract HodlVault is
         return totalValue / totalAmount;  // Rounds down to the nearest integer
     }
 
-    // TODO implement this function
     function _updateLiquidityToInvest() private {
-        // From vaults balance of GHO substract the saveOnly amount
+        saveOnlyTotal = 0;
+        for (uint256 i = 0; i < students.length; i++) {
+            if (studentsMode[students[i]] == DataTypes.StudentMode.SAVE_ONLY) {
+                saveOnlyTotal += convertToAssets(balanceOf(students[i]));
+            }
+        }
+        liquidityToInvest = _thisBalanceOfUnderlyingAsset() - saveOnlyTotal;
+    }
 
+    // Vault's balance of the underlying asset
+    function _thisBalanceOfUnderlyingAsset() private view returns (uint256) {
+        (, bytes memory encodedBalance) = asset().staticcall(
+            abi.encodeCall(IERC20.balanceOf, address(this))
+        );
+        return abi.decode(encodedBalance, (uint256));
     }
 
     function _clearPurchasePrices() private {
@@ -277,21 +349,5 @@ contract HodlVault is
         ) = dataFeed.latestRoundData();
         return answer;
     }
-
-    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view virtual override returns (uint256) {
-        return assets;
-    }
-
-    /**
-     * @dev Internal conversion function (from shares to assets) with support for rounding direction.
-     */
-    function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view virtual override returns (uint256) {
-        (, bytes memory encodedBalance) = asset().staticcall(
-            abi.encodeCall(IERC20.balanceOf, address(this))
-        );
-        uint256 returnedBalance = abi.decode(encodedBalance, (uint256));
-        return shares.mulDiv(returnedBalance + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
-    }
+    
 }
-
-

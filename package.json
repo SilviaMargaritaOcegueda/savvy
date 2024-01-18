@@ -1,6 +1,6 @@
 {
   "name": "hardhat-project",
-  "devDependencies": {
+  "dependencies": {
     "@aave/core-v3": "^1.18.0",
     "@chainlink/contracts": "^0.8.0",
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
