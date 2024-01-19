@@ -371,7 +371,10 @@ contract HodlVault is
             upkeepNeeded = (currentPrice <= exitPrice);
         }
         if(keccak256(checkData) == keccak256(hex'03')) {
-            upkeepNeeded = (block.timestamp - lastTimeStampAutomation) > intervalAutomation; // TODO take profit statement
+            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
+            upkeepNeeded = ((_getOraclePrice() >= targetPrice3) ||
+                (_getOraclePrice() >= targetPrice2) ||
+                (_getOraclePrice() >= targetPrice1)); 
             performData = checkData;
         }
     }
@@ -392,8 +395,13 @@ contract HodlVault is
             }
         }
         if(keccak256(performData) == keccak256(hex'03')) {
-         // takeprofit statement
-            _takeProfit();
+            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
+            if(((_getOraclePrice() >= targetPrice3) ||
+                (_getOraclePrice() >= targetPrice2) ||
+                (_getOraclePrice() >= targetPrice1)))
+                {
+                _takeProfit();
+            }
         }
 
     }
