@@ -15,11 +15,11 @@ export default function Home()
       // CHANGE: make a smart contract call to check if the user has already logged in
       // if user already logged in go to /dashboard
       // if not go to /onboarding
-      router.push('/onboarding')
+      // router.push('/onboarding')
     }else{
       // Connect wallet to go
       // Fix for NOW!
-      router.push('/dashboard')
+      // router.push('/dashboard')
     }
   },[address])
   
