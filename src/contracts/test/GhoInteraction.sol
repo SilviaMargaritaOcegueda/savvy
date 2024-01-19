@@ -56,6 +56,7 @@ contract GhoInteraction {
     }
 
     /// Unwraps contract's WETH into ETH
+    /// True for unwrap amount, and false for unwrap all the contract balance 
     function unwrapWETH9(uint256 amount, bool unwrapAmount) internal {
         uint256 value = WETH9.balanceOf(address(this));
         if (value < amount) {
