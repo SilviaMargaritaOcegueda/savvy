@@ -11,7 +11,7 @@ export default function OnboardingPage()
         <OnboardingElement name="Student" buttonContent="Join your class" iconSvg="/rocket.svg" bgImage="/student.png" route="/student" />
         <OnboardingElement name="Teacher" buttonContent="Set the crew" iconSvg="/space.svg" bgImage="/teacher.png" route="/teacher" />
         <OnboardingElement name="Parent" buttonContent="Get Started" iconSvg="/meme.svg" bgImage="/teacher.png" route="/parent" />
-        <OnboardingElement name="School" buttonContent="Get Started" iconSvg="/earth.svg" bgImage="/student.png" route="/student" />
+        <OnboardingElement name="School" buttonContent="Get Started" iconSvg="/earth.svg" bgImage="/student.png" route="/school" />
         </div>
         </div>
         
