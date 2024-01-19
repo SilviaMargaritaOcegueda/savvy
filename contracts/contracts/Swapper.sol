@@ -14,8 +14,8 @@ contract Swapper {
 
     // Mainnet addresses
     address public constant GHO = 0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f;
-    address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public constant RETH = 0xae78736Cd615f374D3085123A210448E74Fc6393;
 
     uint24 public constant poolFee = 3000;
