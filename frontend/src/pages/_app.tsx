@@ -21,10 +21,12 @@ const config = createConfig(
 export default function App({ Component, pageProps }: AppProps) {
   return <WagmiConfig config={config}>
  
-          <ConnectKitProvider theme="rounded"
+      <ConnectKitProvider 
+        theme="rounded"
         options={{
           embedGoogleFonts: true,
         }}>
-      <Component {...pageProps} /> </ConnectKitProvider>
+        <Component {...pageProps} />
+      </ConnectKitProvider>
     </WagmiConfig>;
 }

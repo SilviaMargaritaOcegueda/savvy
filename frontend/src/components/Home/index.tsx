@@ -15,7 +15,7 @@ export default function Home()
       // make a smart contract call to check if the user has already logged in
       // if user already logged in go to /dashboard
       // if not go to /onboarding
-      router.push('/dashboard')
+      router.push('/onboarding')
     }else{
       // Connect wallet to go
       // Fix for NOW!
