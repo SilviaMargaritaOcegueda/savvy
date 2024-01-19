@@ -6,7 +6,7 @@ pragma solidity >=0.8.2;
 // staking path > abi.encodePacked(GHO, poolFee, USDC, poolFee, WETH9, poolFee, RETH)
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
-import "./utils/AddressBook.sol";
+import "./utils/Constants.sol";
 
 contract Swapper {
     ISwapRouter public immutable swapRouter;

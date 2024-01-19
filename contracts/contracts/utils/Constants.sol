@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.10;
 
-library AddressBook {
+library Constants {
     // Sepolia AggregatorV3Interface to access price from chainlink
     address internal constant ETH_USD = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
     address internal constant GHO_USD = 0x635A86F9fdD16Ff09A0701C305D3a845F1758b8E;
@@ -15,4 +15,7 @@ library AddressBook {
     // Uniswap swap router
     address internal constant SWAP_ROUTER =0xE592427A0AEce92De3Edee1F18E0157C05861564;
 
+    uint256 internal constant POOL_FEE = 3000;
+    bytes internal constant GHO_WETH_PATH = abi.encodePacked(GHO, POOL_FEE, USDC, POOL_FEE, WETH9);
+    bytes internal constant GHO_RETH_PATH = abi.encodePacked(GHO, POOL_FEE, USDC, POOL_FEE, WETH9, POOL_FEE, RETH);
 }

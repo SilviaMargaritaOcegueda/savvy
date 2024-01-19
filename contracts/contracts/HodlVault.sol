@@ -2,13 +2,11 @@
 pragma solidity ^0.8.10;
 pragma abicoder v2;
 
-import "./Swapper.sol";
 import "./StrategyBallot.sol";
 import "./utils/DataTypes.sol";
 import "./StrategyTargetPrices.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract HodlVault is 
     AutomationCompatibleInterface, 
@@ -22,13 +20,12 @@ contract HodlVault is
     uint256 public immutable firstPurchaseTimestamp;
     uint256 public immutable finalPurchaseTimestamp;
     uint256 public immutable finalWithdrawalTimestamp;
-    uint256 public strategyAssetPrice;
     uint256 public weeklyAmount;
     uint256 liquidityToInvest;
     uint256 saveOnlyTotal;
     bool public isClaimEnabled = false;
     
-    // Use an interval in seconds and a timestamp to slow execution of Upkeep
+    // Use an interval (one week in seconds) and a timestamp to slow execution of Upkeep
     uint256 public immutable intervalAutomation = 604_800;
     uint256 public lastTimeStampAutomation;
 

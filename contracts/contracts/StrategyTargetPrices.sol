@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
+pragma abicoder v2;
 
 import "./utils/DataTypes.sol";
 import "./Swapper.sol";
-import "./utils/AddressBook.sol";
+import "./utils/Constants.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract StrategyTargetPrices is Swapper {
