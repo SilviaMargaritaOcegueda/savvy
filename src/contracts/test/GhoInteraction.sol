@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
+import {IWETH9} from "@uniswap/v3-periphery/contracts/interfaces/external/IWETH9.sol";
 
 contract GhoInteraction {
     // TODO eleminate if not used
@@ -13,6 +14,7 @@ contract GhoInteraction {
     IPool pool = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
     // Sepolia IERC20 gho = IERC20(0xcbE9771eD31e761b744D3cB9eF78A1f32DD99211);
     IERC20 gho = IERC20(0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f);
+    IWETH9 WETH9 = IWETH9(0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2);
     
     
     // functions to get GHO-Token: 
@@ -47,37 +49,21 @@ contract GhoInteraction {
         }
 }
 
-    WETH9 = IWETH9(params.weth9)
     
-    /// @notice Wraps an amount of ETH into WETH
-    /// @param recipient The recipient of the WETH
-    /// @param amount The amount to wrap (can be CONTRACT_BALANCE)
-    function wrapETH(address recipient, uint256 amount) internal {
-        if (amount == Constants.CONTRACT_BALANCE) {
-            amount = address(this).balance;
-        } else if (amount > address(this).balance) {
-            revert InsufficientETH();
-        }
-        if (amount > 0) {
+    /// Wraps an amount of ETH into WETH
+    function wrapETH(uint256 amount) internal {
             WETH9.deposit{value: amount}();
-            if (recipient != address(this)) {
-                WETH9.transfer(recipient, amount);
-            }
-        }
     }
 
-    /// @notice Unwraps all of the contract's WETH into ETH
-    /// @param recipient The recipient of the ETH
-    /// @param amountMinimum The minimum amount of ETH desired
-    function unwrapWETH9(address recipient, uint256 amountMinimum) internal {
+    /// Unwraps contract's WETH into ETH
+    function unwrapWETH9(uint256 amount, bool unwrapAmount) internal {
         uint256 value = WETH9.balanceOf(address(this));
-        if (value < amountMinimum) {
+        if (value < amount) {
             revert InsufficientETH();
         }
-        if (value > 0) {
+        if (unwrapAmount) {
+            WETH9.withdraw(amount);
+        } else {
             WETH9.withdraw(value);
-            if (recipient != address(this)) {
-                recipient.safeTransferETH(value);
-            }
         }
     }
