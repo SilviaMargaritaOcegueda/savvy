@@ -66,26 +66,6 @@ contract HodlVault is
         students = _students;
         classAddress = payable(_classAddress);
         weeklyAmount = _weeklyAmount;
-        
-    }
-
-    /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
-    function restartStrategy(DataTypes.StrategyOption newStrategy) external onlyOwner {
-        require(isStrategyStopped);
-        _updateLiquidityToInvest();
-        _clearPurchasePrices();
-        (uint256 amount, uint256 price) = _buyStrategyAsset();
-        purchasePrices[price] += amount;
-        lastAveragePrice = getAveragePrice();
-        strategyOption = newStrategy;
-        isStrategyExited = false; 
-    }
-    
-    /// @dev Sells remaining holdings and enables claims
-    function emergencyExit() external onlyOwner {
-        sellStrategyAsset(address(this).balance, 10_000);
-        _enableClaim();
-        isStrategyExited = true;
     }
 
     /// @dev Sends remaining ETH balance to the class address 
@@ -184,6 +164,25 @@ contract HodlVault is
         _withdraw(_msgSender(), receiver, owner, assets, shares);
 
         return assets;
+    }
+
+    /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
+    function restartStrategy(DataTypes.StrategyOption newStrategy) external onlyOwner {
+        require(isStrategyStopped);
+        _updateLiquidityToInvest();
+        _clearPurchasePrices();
+        (uint256 amount, uint256 price) = _buyStrategyAsset();
+        purchasePrices[price] += amount;
+        lastAveragePrice = getAveragePrice();
+        strategyOption = newStrategy;
+        isStrategyExited = false; 
+    }
+    
+    /// @dev Sells remaining holdings and enables claims
+    function emergencyExit() external onlyOwner {
+        sellStrategyAsset(address(this).balance, 10_000);
+        _enableClaim();
+        isStrategyExited = true;
     }
 
     function _convertToShares(uint256 assets, Math.Rounding /* rounding */) internal view virtual override returns (uint256) {
