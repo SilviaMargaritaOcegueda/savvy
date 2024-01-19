@@ -46,3 +46,38 @@ contract GhoInteraction {
             return withdrawAmount;
         }
 }
+
+    WETH9 = IWETH9(params.weth9)
+    
+    /// @notice Wraps an amount of ETH into WETH
+    /// @param recipient The recipient of the WETH
+    /// @param amount The amount to wrap (can be CONTRACT_BALANCE)
+    function wrapETH(address recipient, uint256 amount) internal {
+        if (amount == Constants.CONTRACT_BALANCE) {
+            amount = address(this).balance;
+        } else if (amount > address(this).balance) {
+            revert InsufficientETH();
+        }
+        if (amount > 0) {
+            WETH9.deposit{value: amount}();
+            if (recipient != address(this)) {
+                WETH9.transfer(recipient, amount);
+            }
+        }
+    }
+
+    /// @notice Unwraps all of the contract's WETH into ETH
+    /// @param recipient The recipient of the ETH
+    /// @param amountMinimum The minimum amount of ETH desired
+    function unwrapWETH9(address recipient, uint256 amountMinimum) internal {
+        uint256 value = WETH9.balanceOf(address(this));
+        if (value < amountMinimum) {
+            revert InsufficientETH();
+        }
+        if (value > 0) {
+            WETH9.withdraw(value);
+            if (recipient != address(this)) {
+                recipient.safeTransferETH(value);
+            }
+        }
+    }

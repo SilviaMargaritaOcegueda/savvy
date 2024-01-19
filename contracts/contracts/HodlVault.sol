@@ -1,54 +1,36 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
+pragma abicoder v2;
 
-import "./utils/DataTypes.sol";
+import "./Swapper.sol";
 import "./StrategyBallot.sol";
+import "./utils/DataTypes.sol";
+import "./StrategyTargetPrices.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract HodlVault is 
     AutomationCompatibleInterface, 
     StrategyBallot, 
-    ERC4626 
+    ERC4626,
+    StrategyTargetPrices
 {
     using Math for uint256;
 
-    event ProfitTaken(
-        uint256 tier, 
-        uint256 price, 
-        uint256 soldAmount);
-
-    event LossStopped(
-        uint256 price,
-        uint256 receivedAmount
-    );
-
-    address public immutable strategyAsset;
     address payable public classAddress;
     uint256 public immutable firstPurchaseTimestamp;
     uint256 public immutable finalPurchaseTimestamp;
     uint256 public immutable finalWithdrawalTimestamp;
     uint256 public strategyAssetPrice;
-    uint256 public lastAveragePrice;
     uint256 public weeklyAmount;
     uint256 liquidityToInvest;
     uint256 saveOnlyTotal;
-    uint256 underlyingAssetOnProfitTotal;
     bool public isClaimEnabled = false;
-    bool public isSetModeEnabled = false;
-    bool public isStrategyExited = false;
-    bool public isStrategyStopped = false;
-
-    // To access strategy asset price from chainlink
-    AggregatorV3Interface internal dataFeed; 
+    
     // Use an interval in seconds and a timestamp to slow execution of Upkeep
     uint256 public immutable intervalAutomation = 604_800;
     uint256 public lastTimeStampAutomation;
-
-    // Associates each strategy option with its parameters
-    mapping(DataTypes.StrategyOption => DataTypes.StrategyParams) public strategyParams;
 
     uint256[] public prices;
     // Associates each purchase price with the amount of strategy asset purchased at that price
@@ -68,24 +50,27 @@ contract HodlVault is
         uint256 _finalDepositTimestamp,
         address _strategyAsset,
         address _underlyingAsset,
+        address _swapRouter,
         address _aggregator,
         address _classAddress,
         address _teacherAddress,
         address[] memory _students
-    ) StrategyBallot(_teacherAddress) ERC4626(IERC20(_underlyingAsset)) ERC20('savvyGHO', 'sGHO') {
+    ) StrategyBallot(_teacherAddress) 
+        ERC4626(IERC20(_underlyingAsset)) 
+        ERC20('savvyGHO', 'sGHO') 
+        StrategyTargetPrices(_aggregator, _swapRouter, _underlyingAsset, _strategyAsset) {
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
         lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
         finalWithdrawalTimestamp = lastTimeStampAutomation + 90 days;
-        strategyAsset = _strategyAsset;
         students = _students;
         classAddress = payable(_classAddress);
         weeklyAmount = _weeklyAmount;
-        dataFeed = AggregatorV3Interface(_aggregator);
+        
     }
 
     /// @dev After a stop loss event, restarts the strategy with the new provided strategy option.
-    function restartStrategy(DataTypes.StrategyOption newStrategy) public onlyOwner {
+    function restartStrategy(DataTypes.StrategyOption newStrategy) external onlyOwner {
         require(isStrategyStopped);
         _updateLiquidityToInvest();
         _clearPurchasePrices();
@@ -97,14 +82,14 @@ contract HodlVault is
     }
     
     /// @dev Sells remaining holdings and enables claims
-    function emergencyExit() public onlyOwner {
-        _sellStrategyAsset(address(this).balance, 10_000);
+    function emergencyExit() external onlyOwner {
+        sellStrategyAsset(address(this).balance, 10_000);
         _enableClaim();
         isStrategyExited = true;
     }
 
     /// @dev Sends remaining ETH balance to the class address 
-    function withdrawAll() public onlyOwner {
+    function withdrawAll() external onlyOwner {
         require(block.timestamp >= finalWithdrawalTimestamp, "Too early to destroy");
         uint256 remainingEthBalance = address(this).balance;
         require(address(this).balance > 0, "Contract balance is empty");
@@ -112,54 +97,11 @@ contract HodlVault is
     }
 
     // Automated actions
-    function purchaseWeekly() private {
+    function purchaseWeekly() internal {
         require(!isStrategyExited, "Strategy exited");
         (uint256 amount, uint256 price) = _buyStrategyAsset();
         purchasePrices[price] += amount;
         lastAveragePrice = getAveragePrice();
-    }
-
-    function _takeProfit() private {
-        require(!isStrategyExited, "Strategy exited");
-        (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
-        require((targetPrice3 - lastAveragePrice) >= 10_000, "Price increment rounds to zero");
-        if (_getOraclePrice() >= targetPrice3) {
-             (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice3.sellBasisPoints);
-             underlyingAssetOnProfitTotal += receivedAmount;
-            emit ProfitTaken(3, price, receivedAmount);
-        } else if (_getOraclePrice() >= targetPrice2) {
-            (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice2.sellBasisPoints);
-            underlyingAssetOnProfitTotal += receivedAmount;
-            emit ProfitTaken(2, price, receivedAmount);
-        } else if (_getOraclePrice() >= targetPrice1) {
-            (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, strategyParams[strategyOption].targetPrice1.sellBasisPoints);
-            underlyingAssetOnProfitTotal += receivedAmount;
-            emit ProfitTaken(1, price, receivedAmount);
-        }
-    }
-
-    function _getTargetPrices() private view returns (uint256, uint256, uint256) {
-        uint256 targetPrice3 = lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice3.priceIncreaseBasisPoints) / 10_000);
-        uint256 targetPrice2 = lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice2.priceIncreaseBasisPoints) / 10_000);
-        uint256 targetPrice1 = lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].targetPrice1.priceIncreaseBasisPoints) / 10_000);
-        
-        return (targetPrice3, targetPrice2, targetPrice1);
-    }
-
-    function _getStopPrice() private view returns (uint256) {
-       return lastAveragePrice + 
-            (lastAveragePrice * (strategyParams[strategyOption].priceDecreaseBasisPoints) / 10_000);
-    }
-
-    function _stopLoss() private {
-        require(!isStrategyExited);
-        (uint256 price, uint256 receivedAmount) = _sellStrategyAsset(address(this).balance, 10_000);
-        isSetModeEnabled = true;
-        isStrategyStopped = true;
-        emit LossStopped(price, receivedAmount);
     }
 
     // Students functions
@@ -253,26 +195,11 @@ contract HodlVault is
         return shares.mulDiv(returnedBalance + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
     }
 
-    function _sellStrategyAsset(uint256 total, uint256 bpsToSell) private returns (uint256 price, uint256 receivedAmount) {
-        uint256 amountToSwitch = _calculateAmountfromBasisPoints(total, bpsToSell);
-        return _switchAssets(strategyAsset, asset(), amountToSwitch);
-    }
-
     function _buyStrategyAsset() private returns (uint256 price, uint256 receivedAmount) {
-        return _switchAssets(asset(), strategyAsset, liquidityToInvest);
+        bytes memory path = abi.encodePacked(asset(), poolFee, AddressBook.USDC, poolFee, AddressBook.WETH9);
+        return swapExactInputMultihop(asset(), liquidityToInvest, path);
     }
-
-    //TODO
-    function _switchAssets(
-        address assetOut, 
-        address assetIn, uint 
-        amountofAssetOut
-    ) private returns (uint price, uint256 receivedAmount) {
-        // TODO declare and implement function
-        // return aave.switchTokens();
-        // return 0;
-    }
-
+   
     // Helper functions
     function _enableClaim() private {
         isClaimEnabled = true;
@@ -287,11 +214,6 @@ contract HodlVault is
         for (uint i = 0; i < newStudents.length; i++) {
             students.push(newStudents[i]);
         }
-    }
-
-    function _calculateAmountfromBasisPoints(uint256 total, uint256 bpsToSell) private pure returns (uint256) {
-        require((total * bpsToSell) >= 10_000);
-        return total * bpsToSell / 10_000;
     }
     
     function getAveragePrice() public view returns (uint256) {
@@ -332,27 +254,6 @@ contract HodlVault is
         }
     }
 
-    // In this contract, we represent percentages as basis points (bps) where 1% = 100 bps.
-    function _setStrategyParams() private {
-        strategyParams[DataTypes.StrategyOption.CONSERVATIVE] = DataTypes.StrategyParams({
-            targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 500, priceIncreaseBasisPoints: 1000}), 
-            targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 1000, priceIncreaseBasisPoints: 2000}), 
-            targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 3000}), 
-            priceDecreaseBasisPoints: 1000});
-        strategyParams[DataTypes.StrategyOption.MODERATE] = DataTypes.StrategyParams({
-            targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 1000, priceIncreaseBasisPoints: 1500}), 
-            targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 2500}), 
-            targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 2000, priceIncreaseBasisPoints: 3500}), 
-            priceDecreaseBasisPoints: 1500});
-        strategyParams[DataTypes.StrategyOption.AGGRESSIVE] = DataTypes.StrategyParams({
-            targetPrice1: DataTypes.TargetPriceParams({sellBasisPoints: 1500, priceIncreaseBasisPoints: 2000}), 
-            targetPrice2: DataTypes.TargetPriceParams({sellBasisPoints: 2000, priceIncreaseBasisPoints: 3000}), 
-            targetPrice3: DataTypes.TargetPriceParams({sellBasisPoints: 2500, priceIncreaseBasisPoints: 4000}), 
-            priceDecreaseBasisPoints: 2000});
-    }
-    
-
-
     // Chainlink function for setting automation based on a timeinterval cause 
     // purchaseweekly has to be resticted called from inside the contract
     // and based on conditions regarding price
@@ -366,15 +267,15 @@ contract HodlVault is
             performData = checkData;
         }
         if(keccak256(checkData) == keccak256(hex'02')) { 
-            uint256 currentPrice = _getOraclePrice();
+            uint256 currentPrice = getOraclePrice();
             uint256 exitPrice = getAveragePrice() - (getAveragePrice() * (strategyParams[strategyOption].priceDecreaseBasisPoints) / 10_000);
             upkeepNeeded = (currentPrice <= exitPrice);
         }
         if(keccak256(checkData) == keccak256(hex'03')) {
-            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
-            upkeepNeeded = ((_getOraclePrice() >= targetPrice3) ||
-                (_getOraclePrice() >= targetPrice2) ||
-                (_getOraclePrice() >= targetPrice1)); 
+            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = getTargetPrices(strategyOption);
+            upkeepNeeded = ((getOraclePrice() >= targetPrice3) ||
+                (getOraclePrice() >= targetPrice2) ||
+                (getOraclePrice() >= targetPrice1)); 
             performData = checkData;
         }
     }
@@ -388,34 +289,20 @@ contract HodlVault is
             }
         }
         if(keccak256(performData) == keccak256(hex'02')) {
-            uint256 currentPrice = _getOraclePrice();
+            uint256 currentPrice = getOraclePrice();
             uint256 exitPrice = getAveragePrice() - (getAveragePrice() * (strategyParams[strategyOption].priceDecreaseBasisPoints) / 10_000);
             if (currentPrice <= exitPrice) {
-                _stopLoss();
+                stopLoss();
             }
         }
         if(keccak256(performData) == keccak256(hex'03')) {
-            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = _getTargetPrices();
-            if(((_getOraclePrice() >= targetPrice3) ||
-                (_getOraclePrice() >= targetPrice2) ||
-                (_getOraclePrice() >= targetPrice1)))
+            (uint256 targetPrice3, uint256 targetPrice2, uint256 targetPrice1) = getTargetPrices(strategyOption);
+            if(((getOraclePrice() >= targetPrice3) ||
+                (getOraclePrice() >= targetPrice2) ||
+                (getOraclePrice() >= targetPrice1)))
                 {
-                _takeProfit();
+                takeProfit(strategyOption);
             }
         }
-
     }
-
-
-    function _getOraclePrice() private view returns(uint256) {
-        (
-            /* uint80 roundID */,
-            int256 answer,
-            /*uint startedAt*/,
-            /*uint timeStamp*/,
-            /*uint80 answeredInRound*/
-        ) = dataFeed.latestRoundData();
-        return uint256(answer);
-    }
-    
 }

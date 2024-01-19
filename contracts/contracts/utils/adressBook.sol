@@ -1,3 +1,0 @@
-// Sepolia AggregatorV3Interface to access price from chainlink
-// ETH / USD 0x694AA1769357215DE4FAC081bf1f309aDC325306
-// GHO / USD 0x635A86F9fdD16Ff09A0701C305D3a845F1758b8E
