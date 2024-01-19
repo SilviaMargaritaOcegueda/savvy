@@ -5,8 +5,7 @@ import "@/styles/globals.css";
 import type { AppProps } from "next/app";
 
 import { WagmiConfig, createConfig } from "wagmi";
-import { ConnectKitProvider, ConnectKitButton, getDefaultConfig } from "connectkit";
-
+import { ConnectKitProvider, getDefaultConfig } from "connectkit";
 
 const config = createConfig(
   getDefaultConfig({
@@ -21,7 +20,11 @@ const config = createConfig(
 
 export default function App({ Component, pageProps }: AppProps) {
   return <WagmiConfig config={config}>
-          <ConnectKitProvider>
+ 
+          <ConnectKitProvider theme="rounded"
+        options={{
+          embedGoogleFonts: true,
+        }}>
       <Component {...pageProps} /> </ConnectKitProvider>
     </WagmiConfig>;
 }
