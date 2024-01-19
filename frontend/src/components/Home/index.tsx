@@ -12,7 +12,7 @@ export default function Home()
   useEffect(()=>{
     if(address!=undefined)
     {
-      // make a smart contract call to check if the user has already logged in
+      // CHANGE: make a smart contract call to check if the user has already logged in
       // if user already logged in go to /dashboard
       // if not go to /onboarding
       router.push('/onboarding')
