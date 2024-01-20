@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPool} from "@aave/core-v3/contracts/interfaces/IPool.sol";
-import {IWETH9} from "@uniswap/v3-periphery/contracts/interfaces/external/IWETH9.sol";
+import {IWETH9} from "./IWETH9.sol";
 
 contract GhoInteraction {
     // TODO eleminate if not used
@@ -14,8 +14,9 @@ contract GhoInteraction {
     IPool pool = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
     // Sepolia IERC20 gho = IERC20(0xcbE9771eD31e761b744D3cB9eF78A1f32DD99211);
     IERC20 gho = IERC20(0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f);
-    IWETH9 WETH9 = IWETH9(0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2);
+    IWETH9 WETH9 = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     
+    error InsufficientETH();
     
     // functions to get GHO-Token: 
     // 1. approveEth
@@ -47,7 +48,7 @@ contract GhoInteraction {
             uint withdrawAmount = pool.withdraw(asset, amount, to);
             return withdrawAmount;
         }
-}
+
 
     
     /// Wraps an amount of ETH into WETH
@@ -68,3 +69,4 @@ contract GhoInteraction {
             WETH9.withdraw(value);
         }
     }
+}

@@ -19,10 +19,12 @@ contract MockSavvyHodlVault is SavvyHodlVault {
         address[] memory _students // frontend
     ) public 
     SavvyHodlVault(
-        StrategyBallot(_teacherAddress) 
-        ERC4626(IERC20(_underlyingAsset)) 
-        ERC20('savvyGHO', 'sGHO') 
-        StrategyTargetPrices(_aggregator, _swapRouter, _underlyingAsset, _strategyAsset) {
+            StrategyBallot(_teacherAddress), 
+            ERC4626(IERC20(_underlyingAsset)) 
+            ERC20('savvyGHO', 'sGHO') 
+            StrategyTargetPrices(_aggregator, _swapRouter, _underlyingAsset, _strategyAsset)
+        )
+        {
         strategyName = _strategyName;
         firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
         finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
@@ -30,8 +32,7 @@ contract MockSavvyHodlVault is SavvyHodlVault {
         finalWithdrawalTimestamp = lastTimeStampAutomation + 90 days;
         students = _students;
         classAddress = payable(_classAddress);
-        weeklyAmount = _weeklyAmount;)
-        {
+        weeklyAmount = _weeklyAmount;
     }
 
     // has to be set that stoploos or takeprofit will be triggered
