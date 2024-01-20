@@ -9,7 +9,7 @@ import "./StrategyTargetPrices.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 
-contract HodlVault is 
+contract SavvyHodlVault is 
     AutomationCompatibleInterface, 
     StrategyBallot, 
     ERC4626,
