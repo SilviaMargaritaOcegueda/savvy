@@ -17,31 +17,22 @@ contract MockSavvyHodlVault is SavvyHodlVault {
         address _classAddress, // frontend
         address _teacherAddress, // frontend
         address[] memory _students // frontend
-    ) public 
+    )  
     SavvyHodlVault(
-            StrategyBallot(_teacherAddress) ERC4626(IERC20(_underlyingAsset)) 
-            ERC20('savvyGHO', 'sGHO') 
-            StrategyTargetPrices(_aggregator, _swapRouter, _underlyingAsset, _strategyAsset)
+           _underlyingAsset,_strategyAsset,_swapRouter,_aggregator, _strategyName, _weeklyAmount,
+            _initialDepositTimestamp, _finalDepositTimestamp, _classAddress, _teacherAddress, _students
         )
         {
-        strategyName = _strategyName;
-        firstPurchaseTimestamp = _initialDepositTimestamp + 1 days;
-        finalPurchaseTimestamp = _finalDepositTimestamp + 1 days;
-        lastTimeStampAutomation = finalPurchaseTimestamp + 1 days;
-        finalWithdrawalTimestamp = lastTimeStampAutomation + 90 days;
-        students = _students;
-        classAddress = payable(_classAddress);
-        weeklyAmount = _weeklyAmount;
-    }
+        }
 
     // has to be set that stoploos or takeprofit will be triggered
-    function getAveragePrice(uint256 _value) public virtual override view returns (uint256){
+    function getAveragePrice(uint256 _value) public virtual view returns (uint256){
         return _value;
     }
 
     // has to be set higher than targetPrice to trigger takeprofit
     // has to be set smaller than exitprice (based on average price) to trigger stoploss
-    function getOraclePrice(uint256 _value) public virtual override view returns (uint256){
+    function getOraclePrice(uint256 _value) public virtual view returns (uint256){
         return _value;
     }
 

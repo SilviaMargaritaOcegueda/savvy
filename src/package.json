@@ -1,11 +1,18 @@
 {
   "name": "hardhat-project",
-  "dependencies": {
+  "devDependencies": {
     "@aave/core-v3": "^1.18.0",
     "@chainlink/contracts": "^0.8.0",
-    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.2",
+    "@nomicfoundation/hardhat-toolbox": "^1.0.2",
+    "@nomiclabs/hardhat-ethers": "^2.1.0",
     "@openzeppelin/contracts": "^5.0.1",
-    "@openzeppelin/hardhat-upgrades": "^3.0.2",
-    "@uniswap/v3-periphery": "^1.4.4"
+    "@tenderly/hardhat-tenderly": "^2.1.0",
+    "@uniswap/v3-periphery": "^1.4.4",
+    "ethers": "^5.6.9",
+    "hardhat": "^2.10.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.1"
   }
 }
