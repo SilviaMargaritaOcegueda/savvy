@@ -21,12 +21,12 @@ contract GhoInteraction {
     // 1. approveEth
     // 2. supplyLiquidity
     // 3. borrowGho
-    function approveETH(uint256 _amount)
+    function approveETH(IERC20 _ierc20, uint256 _amount)
         external
         returns (bool)
     {
         // TODO Call with eth.approve
-        return dai.approve(address(pool), _amount);
+        return _ierc20.approve(address(pool), _amount);
     }
 
     function supplyLiquidity(address asset, uint256 amount, address onBehalfOf) 
