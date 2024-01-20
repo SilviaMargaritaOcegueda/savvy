@@ -19,8 +19,7 @@ contract MockSavvyHodlVault is SavvyHodlVault {
         address[] memory _students // frontend
     ) public 
     SavvyHodlVault(
-            StrategyBallot(_teacherAddress), 
-            ERC4626(IERC20(_underlyingAsset)) 
+            StrategyBallot(_teacherAddress) ERC4626(IERC20(_underlyingAsset)) 
             ERC20('savvyGHO', 'sGHO') 
             StrategyTargetPrices(_aggregator, _swapRouter, _underlyingAsset, _strategyAsset)
         )

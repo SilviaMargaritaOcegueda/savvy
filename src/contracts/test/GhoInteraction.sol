@@ -52,13 +52,15 @@ contract GhoInteraction {
 
     
     /// Wraps an amount of ETH into WETH
-    function wrapETH(uint256 amount) internal {
+    // cant be called! it will be reverted! reason unclear!
+    function wrapETH(uint256 amount) external {
             WETH9.deposit{value: amount}();
+            
     }
 
     /// Unwraps contract's WETH into ETH
     /// True for unwrap amount, and false for unwrap all the contract balance 
-    function unwrapWETH9(uint256 amount, bool unwrapAmount) internal {
+    function unwrapWETH9(uint256 amount, bool unwrapAmount) external {
         uint256 value = WETH9.balanceOf(address(this));
         if (value < amount) {
             revert InsufficientETH();
