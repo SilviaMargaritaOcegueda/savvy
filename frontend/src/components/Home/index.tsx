@@ -23,10 +23,17 @@ export default function Home() {
 
   return (
     <div className="flex flex-col justify-center items-center">
-      <div className="bg-gradient-to-r from-[#F8049C] to-[#FDD54F] w-full h-[500px] rounded-b-full flex flex-col justify-center items-center">
+      <div
+        className="bg-gradient-to-r from-[#F8049C] to-[#FDD54F] w-full h-[500px] rounded-b-full flex flex-col justify-center items-center"
+        // style={{
+        //   backgroundImage:
+        //     "url('https://drive.google.com/file/d/1IXq2cmIgeHrNSjK0W_oaMl_uskloRgsn/view?usp=drive_link')",
+        //   backgroundSize: "",
+        // }}
+      >
         <Image src={"/logo.png"} width={200} height={100} alt="logo" />
 
-        <p className="text-white  text-3xl font-semibold mt-14">Hi Welcome</p>
+        <p className="text-white  text-3xl font-semibold mt-14">Hi, welcome!</p>
       </div>
       <div className="mt-8">
         <ConnectKitButton />

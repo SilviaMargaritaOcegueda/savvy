@@ -42,8 +42,8 @@ export default function Vote() {
         />
       </div>
       <div className="text-[#595B70] w-[500px]">
-        <p className="mt-8">b</p>
-        <p className="mt-8">b</p>
+        <p className="mt-8"></p>
+        <p className="mt-8"></p>
       </div>
       <button className="bg-[#FA378A] text-white px-3 py-2 rounded-lg font-semibold text-xl my-8">
         Vote
