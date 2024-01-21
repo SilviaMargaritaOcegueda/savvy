@@ -10,7 +10,7 @@ export default function Onboarding() {
           buttonContent="Join class"
           iconSvg="/rocket.svg"
           bgImage="/student.png"
-          route="/student"
+          route="/student/vote"
         />
         <OnboardingElement
           name="Teacher"
